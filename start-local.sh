@@ -94,6 +94,12 @@ run_clean() {
   echo -e "${GREEN}✓ Limpieza completada.${RESET}"
 }
 
+run_web() {
+  echo -e "\n${BLUE}${BOLD}🌐 Iniciando Portal Web Embebido & Dashboard (React + TypeScript)...${RESET}"
+  echo -e "${CYAN}Acceso disponible en: ${BOLD}http://localhost:9090${RESET}"
+  make web
+}
+
 run_all() {
   print_header
   check_prerequisites
@@ -108,6 +114,7 @@ run_all() {
   echo -e "\n${GREEN}${BOLD}======================================================${RESET}"
   echo -e "${GREEN}${BOLD}  ✨ TODOS LOS SERVICIOS LOCALES INICIALIZADOS CON ÉXITO${RESET}"
   echo -e "${GREEN}${BOLD}======================================================${RESET}"
+  echo -e "Para abrir el portal web interactivo:      ${CYAN}./start-local.sh --web${RESET}"
   echo -e "Para ejecutar el demo pub/sub interactivo: ${CYAN}./start-local.sh --demo${RESET}"
   echo -e "Para correr benchmarks:                    ${CYAN}./start-local.sh --bench${RESET}"
   echo -e "Para ejecutar las pruebas:                 ${CYAN}./start-local.sh --test${RESET}"
@@ -119,6 +126,7 @@ print_help() {
   echo ""
   echo "Opciones:"
   echo "  (sin args), all, start   Ejecuta el flujo completo de inicialización local"
+  echo "  --web, web, portal       Inicia el portal web embebido y dashboard de KPIs (http://localhost:9090)"
   echo "  --server, server         Inicia el broker Kafka en modo KRaft (tools/server_main.aura)"
   echo "  --topics, topics         Aprovisiona y lista tópicos (tools/topics_cli.aura)"
   echo "  --producer, producer     Publica mensajes de prueba (tools/console_producer.aura)"
@@ -136,6 +144,9 @@ print_help() {
 case "${1:-all}" in
   all|start)
     run_all
+    ;;
+  --web|web|portal|--portal)
+    run_web
     ;;
   --server|server)
     check_prerequisites

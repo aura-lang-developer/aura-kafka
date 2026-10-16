@@ -35,6 +35,7 @@
   - [Diferencia entre aura build y aura run](#diferencia-entre-aura-build-y-aura-run)
 - [🧪 Ejecución de Pruebas Automatizadas](#-ejecución-de-pruebas-automatizadas)
 - [🛠️ Herramientas CLI Incluidas](#️-herramientas-cli-incluidas)
+- [🌐 Portal Web Embebido & Dashboard de Observabilidad](#-portal-web-embebido--dashboard-de-observabilidad)
 - [📂 Estructura del Proyecto](#-estructura-del-proyecto)
 - [📜 Licencia](#-licencia)
 
@@ -350,6 +351,58 @@ AuraKafka cuenta con **7 suites de pruebas** con **37 pruebas unitarias e integr
 | `make tools-producer` | `tools/console_producer.aura` | `bin/kafka-console-producer.sh` |
 | `make tools-consumer` | `tools/console_consumer.aura` | `bin/kafka-console-consumer.sh` |
 | `make tools-server` | `tools/server_main.aura` | `bin/kafka-server-start.sh` |
+| `make web` | `web/server.ts` | Portal Web & Dashboard de Observabilidad |
+
+---
+
+## 🌐 Portal Web Embebido & Dashboard de Observabilidad
+
+AuraKafka incluye un **Portal Web de Control y Observabilidad** embebido de alto rendimiento, desarrollado con **React**, **TypeScript** y **Vite**, diseñado para interactuar con todas las funcionalidades del clúster, visualizar flujos de eventos y monitorizar la salud operativa en tiempo real.
+
+### 🌟 Capacidades del Portal Web
+
+1. **📊 Dashboard de Observabilidad & KPIs:**
+   - **Throughput en Vivo:** Gráfico SVG en tiempo real (últimos 30 segundos) de tasa de ingestión (msgs/s) vs tasa de consumo procesado.
+   - **Métricas Clave:** Total de mensajes producidos/consumidos, volumen en bytes, latencia promedio y distribución de particiones.
+   - **Consumer Lag:** Monitor de desfasaje entre el Log End Offset (LEO) y el Committed Offset para cada grupo de consumidores.
+   - **Salud del Clúster:** Estado de Quórum KRaft, líder activo, época y uso del motor de almacenamiento en disco.
+
+2. **🌊 Visualizador de Flujo de Datos (Pipeline Topológico):**
+   - Diagrama interactivo en 4 etapas: **Productores &rarr; Broker KRaft &rarr; Logs de Partición &rarr; Grupos de Consumidores**.
+   - Animación de paquetes de eventos en tiempo real fluyendo entre los nodos del clúster.
+   - Simulador de tráfico integrado (Play/Pausa, inyección de ráfagas) e inspector de nodos.
+
+3. **🛠️ Administración de Tópicos & Particiones:**
+   - Catálogo interactivo de tópicos, particiones, réplicas ISR y High Watermark.
+   - Modal para creación de tópicos con política de limpieza (`delete`, `compact`) y retención.
+   - Explorador de mensajes almacenados en los segmentos append-only.
+
+4. **📤 Consola de Publicación (Producer Console):**
+   - Envío de mensajes con particionado automático por hash de clave o asignación directa.
+   - Plantillas predefinidas (Pedidos e-commerce, Pagos financieros, Telemetría IoT).
+   - Generador de cabeceras Kafka personalizadas y visor de historial de publicaciones.
+
+5. **📥 Consola de Consumo & Grupos (Consumer Console):**
+   - Monitor de grupos de consumo (`Stable`, miembros, rebalances).
+   - Lector de streams en vivo con polling y decodificación de payloads JSON.
+
+6. **📜 Consola de Logs Operacionales:**
+   - Transmisión en tiempo real vía WebSocket de eventos del broker, KRaft, storage y clientes.
+   - Filtrado por nivel de severidad (`INFO`, `WARN`, `ERROR`, `DEBUG`) y subsistema.
+   - Búsqueda instantánea, auto-scroll, copiado y descarga de logs en formato `.txt`.
+
+### 🚀 Comandos de Ejecución del Portal Web
+
+```bash
+# Opción 1: Mediante Makefile (Compila y arranca el gateway en http://localhost:9090)
+make web
+
+# Opción 2: Mediante el script automatizado
+./start-local.sh --web
+
+# Opción 3: Modo Desarrollo con Hot Reload (Vite HMR en puerto 3000 con proxy a 9090)
+make dev-web
+```
 
 ---
 

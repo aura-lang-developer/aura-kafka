@@ -291,12 +291,28 @@ fn runBenchmark(): Unit => {
   println("================================================================================");
 }
 
+fn runWeb(): Unit => {
+  PrintBanner();
+  println("🌐  AuraKafka Embedded Web Portal & Dashboard (React + TypeScript)");
+  println("--------------------------------------------------");
+  println("[PORTAL] Panel de control y observabilidad embebido:");
+  println("  • URL del Portal:   http://localhost:9090");
+  println("  • WebSocket Stream: ws://localhost:9090/ws");
+  println("  • Broker KRaft:     127.0.0.1:9092");
+  println("\nComandos de arranque del portal:");
+  println("  make web             Inicia el servidor y portal embebido");
+  println("  ./start-local.sh web Inicia el entorno local con portal web");
+  println("  make dev-web         Inicia el entorno de desarrollo Vite (HMR en puerto 3000)");
+  println("");
+}
+
 fn printHelp(): Unit => {
   PrintBanner();
   println("AuraKafka Unified Command Line Interface (CLI)");
   println("Usage: aurakafka <command> [options]");
   println("");
   println("Available Commands:");
+  println("  web        Launch embedded web portal, KPI dashboard & data flow visualizer");
   println("  server     Start the Kafka Broker Server daemon (KRaft controller mode)");
   println("  topics     Create, list, describe, and inspect Kafka topics & partitions");
   println("  producer   Publish interactive console events to partitioned topics");
@@ -306,6 +322,7 @@ fn printHelp(): Unit => {
   println("  help       Show this usage information and exit");
   println("");
   println("Examples:");
+  println("  aurakafka web");
   println("  aurakafka server");
   println("  aurakafka topics");
   println("  aurakafka producer");
@@ -327,6 +344,8 @@ export fn main(): Unit => {
   };
 
   match cmd {
+    "web"      => runWeb(),
+    "portal"   => runWeb(),
     "server"   => runServer(),
     "topics"   => runTopics(),
     "producer" => runProducer(),

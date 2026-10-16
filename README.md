@@ -452,12 +452,68 @@ consumer.Close();
 
 ---
 
+## 🌐 Embedded Web Control Center & Observability Portal
+
+AuraKafka ships with a built-in, high-performance **Control Center & Observability Portal** developed in **React**, **TypeScript**, and **Vite**. It provides an integrated GUI for interacting with Kafka features, inspecting real-time streaming topologies, monitoring operational logs, and analyzing processing KPIs.
+
+### 🌟 Key Web Capabilities
+
+1. **📊 Observability Dashboard & KPIs:**
+   - **Live Throughput:** Real-time SVG chart (last 30 seconds) comparing producer ingestion rate (msgs/sec) vs. consumer processing rate.
+   - **Core Metrics:** Total produced/consumed messages, disk bytes, average latency, and partition balance.
+   - **Consumer Lag Monitor:** Offset divergence tracking between Log End Offset (LEO) and Committed Offset across all consumer groups.
+   - **Cluster Health:** KRaft Quorum status, active controller ID, epoch, and storage engine utilization.
+
+2. **🌊 Visual Data Flow (Interactive Pipeline Topology):**
+   - 4-tier interactive pipeline: **Producers &rarr; KRaft Broker &rarr; Partition Logs &rarr; Consumer Groups**.
+   - Real-time animated packet flows traveling through communication channels.
+   - Built-in traffic simulator (Play/Pause, rate control, burst generation) and node inspector.
+
+3. **🛠️ Topic & Partition Management:**
+   - Topic catalog with partition details, in-sync replicas (ISR), and High Watermark (HWM).
+   - Topic creation modal supporting custom partitions, replication factors, and cleanup policies (`delete`, `compact`).
+   - Append-only log segment record viewer.
+
+4. **📤 Interactive Producer Console:**
+   - Send records with automatic key-hashing (Murmur2) or specific partition overrides.
+   - Pre-configured message templates (E-Commerce Orders, Payments, IoT Telemetry).
+   - Custom Kafka Headers builder and session send history.
+
+5. **📥 Consumer Console & Stream Reader:**
+   - Consumer group coordinator state inspection (`Stable`, active members, partition assignments).
+   - Live stream subscriber with automated polling and formatted JSON payload display.
+
+6. **📜 Operational Logs Monitor:**
+   - Real-time WebSocket streaming of broker, KRaft, storage, and coordinator logs.
+   - Severity filters (`INFO`, `WARN`, `ERROR`, `DEBUG`) and subsystem filters (`BROKER`, `KRAFT`, `STORAGE`, `COORDINATOR`, `PRODUCER`, `CONSUMER`).
+   - Instant text search, auto-scroll, clipboard copy, and text export.
+
+### 🚀 Running the Web Portal
+
+```bash
+# Option 1: Via Makefile (builds and launches the portal at http://localhost:9090)
+make web
+
+# Option 2: Via local startup script
+./start-local.sh --web
+
+# Option 3: Frontend Dev Mode with Vite HMR (port 3000 proxying to 9090)
+make dev-web
+```
+
+---
+
 ## 📂 Project Structure
 
 ```
 AuraKafka/
 ├── aura.mod                    # Aura module definition (github.com/apache/kafka-aura)
 ├── kafka.aura                  # Main library facade, versioning & ASCII banner
+├── web/                        # Embedded React + TypeScript Web Portal & Dashboard
+│   ├── src/                    # Frontend components, views, styles, and services
+│   ├── server.ts               # Embedded HTTP REST & WebSocket gateway daemon (:9090)
+│   ├── package.json            # Web dependencies (Vite, React 19, Lucide, WS)
+│   └── vite.config.ts          # Vite build and proxy configuration
 ├── Makefile                    # Build automation and test orchestration
 ├── README.md                   # English documentation & architectural guide
 ├── README_ES.md                # Spanish documentation

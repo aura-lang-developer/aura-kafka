@@ -5,7 +5,7 @@
 
 AURA ?= aura
 
-.PHONY: all check test test-storage test-protocol test-coordinator test-producer test-consumer test-admin test-e2e demo run-demo run-producer run-consumer tools tools-topics tools-producer tools-consumer tools-server cli build fmt clean
+.PHONY: all check test test-storage test-protocol test-coordinator test-producer test-consumer test-admin test-e2e demo run-demo run-producer run-consumer tools tools-topics tools-producer tools-consumer tools-server cli build web build-web dev-web portal fmt clean
 
 all: test
 
@@ -91,6 +91,21 @@ build:
 	@echo "📦 Compiling standalone unified binary 'bin/aurakafka'..."
 	@$(AURA) build cli.aura -o bin/aurakafka --release
 	@echo "✓ Unified binary created at bin/aurakafka"
+
+build-web:
+	@echo "📦 Building Embedded React + TypeScript Web Portal..."
+	@npm --prefix web run build
+	@echo "✓ Embedded web portal built in web/dist"
+
+web: build-web
+	@echo "🚀 Launching AuraKafka Embedded Web Portal & Dashboard..."
+	@npm --prefix web run server
+
+dev-web:
+	@echo "⚡ Launching AuraKafka Web in Dev Mode (Vite + HMR)..."
+	@npm --prefix web run dev
+
+portal: web
 
 fmt:
 	@$(AURA) fmt -w .
