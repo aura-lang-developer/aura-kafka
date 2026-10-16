@@ -1,16 +1,23 @@
 // ==============================================================================
 // Apache Kafka for Aura Language (AuraKafka)
-// client/admin.aura - Kafka Admin Client API
+// client/admin.aura - Kafka Admin Client API (Modern Functional Pipeline Edition)
 // Based on org.apache.kafka.clients.admin.AdminClient
 // ==============================================================================
 
 import {
   CreateTopicsRequest,
   CreateTopicsRequestTopic,
+  CreateTopicsResponse,
+  CreateTopicsResponseTopic,
   DeleteTopicsRequest,
-  MetadataRequest
-} from "../protocol/messages";
-import { KafkaBroker } from "../server/broker";
+  DeleteTopicsResponse,
+  DeleteTopicsResponseTopic,
+  MetadataRequest,
+  MetadataResponse,
+  MetadataResponsePartition,
+  MetadataResponseTopic
+}from "../protocol/messages";
+import {KafkaBroker}from "../server/broker";
 
 /// Specifications for creating a new Kafka topic
 export struct NewTopic {
@@ -48,105 +55,123 @@ export struct AdminClient {
 };
 
 export fn NewAdminClient(broker: KafkaBroker): AdminClient => {
-  return { broker: broker };
+  return {broker: broker};
 }
 
-/// Creates new topics in the cluster
-fn (admin: *AdminClient) CreateTopics(topics: []NewTopic): Result<Bool, String> => {
-  let mut reqTopics: []CreateTopicsRequestTopic = [];
-  let mut i = 0;
-  while i < len(topics) {
-    let t = topics[i];
-    reqTopics.push({
-      name: t.name,
-      numPartitions: t.numPartitions,
-      replicationFactor: t.replicationFactor
-    });
-    i += 1;
-  };
+// ------------------------------------------------------------------------------
+// Transformation Helpers (Pipeline Stages)
+// ------------------------------------------------------------------------------
 
-  let req: CreateTopicsRequest = {
-    topics: reqTopics,
-    timeoutMs: 30000
+fn toCreateTopicsRequestTopic(t: NewTopic): CreateTopicsRequestTopic => {
+  return {
+    name: t.name,
+    numPartitions: t.numPartitions,
+    replicationFactor: t.replicationFactor
   };
+}
 
-  let resp = admin.broker.HandleCreateTopics(req);
-  let mut j = 0;
-  while j < len(resp.topics) {
-    let tResp = resp.topics[j];
-    if (tResp.errorCode != 0) {
-      return Err(`Failed to create topic '${tResp.name}': ${tResp.errorMessage}`);
-    };
-    j += 1;
+fn toCreateTopicsRequest(topics: []NewTopic, timeoutMs: Int): CreateTopicsRequest => {
+  return {
+    topics: topics |> map(toCreateTopicsRequestTopic),
+    timeoutMs: timeoutMs
+  };
+}
+
+fn checkCreateTopicsResponse(resp: CreateTopicsResponse): Result<Bool, String> => {
+  let errors = resp.topics |> filter(fn(t: CreateTopicsResponseTopic): Bool => {
+    return t.errorCode != 0;
+  });
+
+  if len(errors)>0 {
+    let err = errors[0];
+    return Err(`Failed to create topic '${err.name}': ${err.errorMessage}`);
   };
 
   return Ok(true);
 }
 
-/// Lists all existing topic names in the cluster
-fn (admin: *AdminClient) ListTopics(): []String => {
-  return admin.broker.logManager.AllTopics();
+fn toDeleteTopicsRequest(topicNames: []String, timeoutMs: Int): DeleteTopicsRequest => {
+  return {
+    topicNames: topicNames,
+    timeoutMs: timeoutMs
+  };
 }
 
-/// Describes metadata and partitions for given topic names
-fn (admin: *AdminClient) DescribeTopics(topicNames: []String): []TopicDescription => {
-  let req: MetadataRequest = {
+fn checkDeleteTopicsResponse(resp: DeleteTopicsResponse): Result<Bool, String> => {
+  let errors = resp.topics |> filter(fn(t: DeleteTopicsResponseTopic): Bool => {
+    return t.errorCode != 0;
+  });
+
+  if len(errors)>0 {
+    let err = errors[0];
+    return Err(`Failed to delete topic '${err.name}' with error code ${err.errorCode}`);
+  };
+
+  return Ok(true);
+}
+
+fn toMetadataRequest(topicNames: []String): MetadataRequest => {
+  return {
     topics: topicNames,
     allowAutoTopicCreation: false
   };
-
-  let resp = admin.broker.HandleMetadata(req);
-  let mut descriptions: []TopicDescription = [];
-  let mut tIdx = 0;
-
-  while tIdx < len(resp.topics) {
-    let t = resp.topics[tIdx];
-    let mut parts: []PartitionMetadata = [];
-    let mut pIdx = 0;
-
-    while pIdx < len(t.partitions) {
-      let p = t.partitions[pIdx];
-      parts.push({
-        partition: p.partitionIndex,
-        leader: p.leaderId,
-        replicas: p.replicaNodes,
-        isr: p.isrNodes
-      });
-      pIdx += 1;
-    };
-
-    descriptions.push({
-      name: t.name,
-      isInternal: t.isInternal,
-      partitions: parts
-    });
-    tIdx += 1;
-  };
-
-  return descriptions;
 }
 
-/// Deletes topics by name
-fn (admin: *AdminClient) DeleteTopics(topicNames: []String): Result<Bool, String> => {
-  let req: DeleteTopicsRequest = {
-    topicNames: topicNames,
-    timeoutMs: 30000
+fn toPartitionMetadata(p: MetadataResponsePartition): PartitionMetadata => {
+  return {
+    partition: p.partitionIndex,
+    leader: p.leaderId,
+    replicas: p.replicaNodes,
+    isr: p.isrNodes
   };
+}
 
-  let resp = admin.broker.HandleDeleteTopics(req);
-  let mut i = 0;
-  while i < len(resp.topics) {
-    let tResp = resp.topics[i];
-    if (tResp.errorCode != 0) {
-      return Err(`Failed to delete topic '${tResp.name}' with error code ${tResp.errorCode}`);
-    };
-    i += 1;
+fn toTopicDescription(t: MetadataResponseTopic): TopicDescription => {
+  return {
+    name: t.name,
+    isInternal: t.isInternal,
+    partitions: t.partitions |> map(toPartitionMetadata)
   };
+}
 
-  return Ok(true);
+fn extractTopicDescriptions(resp: MetadataResponse): []TopicDescription => {
+  return resp.topics |> map(toTopicDescription);
+}
+
+// ------------------------------------------------------------------------------
+// AdminClient Methods
+// ------------------------------------------------------------------------------
+
+/// Creates new topics in the cluster using functional pipeline stages
+fn(admin: * AdminClient)CreateTopics(topics: []NewTopic): Result<Bool, String> => {
+  return topics
+  |> toCreateTopicsRequest(30000)
+  |> admin.broker.HandleCreateTopics
+  |> checkCreateTopicsResponse;
+}
+
+/// Lists all existing topic names in the cluster
+fn(admin: * AdminClient)ListTopics(): []String => {
+  return admin.broker.logManager.AllTopics();
+}
+
+/// Describes metadata and partitions for given topic names using nested pipelines
+fn(admin: * AdminClient)DescribeTopics(topicNames: []String): []TopicDescription => {
+  return topicNames
+  |> toMetadataRequest
+  |> admin.broker.HandleMetadata
+  |> extractTopicDescriptions;
+}
+
+/// Deletes topics by name using pipeline stages and error filtering
+fn(admin: * AdminClient)DeleteTopics(topicNames: []String): Result<Bool, String> => {
+  return topicNames
+  |> toDeleteTopicsRequest(30000)
+  |> admin.broker.HandleDeleteTopics
+  |> checkDeleteTopicsResponse;
 }
 
 /// Returns a string describing cluster state
-fn (admin: *AdminClient) DescribeCluster(): String => {
+fn(admin: * AdminClient)DescribeCluster(): String => {
   return `Cluster ID: ${admin.broker.kraft.clusterId} | Active Controller: Broker-${admin.broker.kraft.leaderBrokerId} | Registered Brokers: ${admin.broker.kraft.NumBrokers()}`;
 }
