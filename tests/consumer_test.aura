@@ -1,0 +1,80 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// tests/consumer_test.aura - Unit Tests for KafkaConsumer Client
+// ==============================================================================
+
+import { KafkaBroker, NewDefaultBroker } from "../server/broker";
+import { KafkaProducer, NewKafkaProducer, NewProducerRecord } from "../client/producer";
+import { KafkaConsumer, NewKafkaConsumer } from "../client/consumer";
+import { NewDefaultProducerConfig, NewDefaultConsumerConfig } from "../client/config";
+
+export fn main(): Unit => {
+  let mut passed = 0;
+  let mut failed = 0;
+
+  println("================================================================================");
+  println("  🧪 AURAKAFKA - CONSUMER CLIENT UNIT TESTS");
+  println("================================================================================");
+
+  let mut broker = NewDefaultBroker(1, 9092);
+  broker.Startup();
+
+  // Populate topic with 3 records
+  let pCfg = NewDefaultProducerConfig();
+  let mut producer = NewKafkaProducer(pCfg, broker);
+  let topic = "market-feed";
+
+  producer.Send(NewProducerRecord(topic, "AAPL", "{\"price\": 180.50}"));
+  producer.Send(NewProducerRecord(topic, "GOOG", "{\"price\": 145.20}"));
+  producer.Send(NewProducerRecord(topic, "MSFT", "{\"price\": 330.10}"));
+
+  // Test 1: Subscribe and Poll Earliest Records
+  println("\n[TEST 1] Subscription and Poll (autoOffsetReset = earliest)");
+  let mut cCfg = NewDefaultConsumerConfig("finance-group");
+  cCfg.autoOffsetReset = "earliest";
+  let mut consumer = NewKafkaConsumer(cCfg, broker);
+
+  consumer.Subscribe([topic]);
+  let records = consumer.Poll(1000);
+
+  if (len(records) >= 3) {
+    println(`  ✓ PASS: Consumed ${len(records)} records successfully from group subscription`);
+    passed += 1;
+  } else {
+    println(`  ✕ FAIL: Expected at least 3 records, received ${len(records)}`);
+    failed += 1;
+  };
+
+  // Test 2: CommitSync & Position
+  println("\n[TEST 2] Offset CommitSync & Position Tracking");
+  consumer.CommitSync();
+  let pos = consumer.Position(topic, records[0].partition);
+
+  if (pos > 0) {
+    println(`  ✓ PASS: Consumer position advanced to offset ${pos}`);
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: Consumer position not updated");
+    failed += 1;
+  };
+
+  // Test 3: Manual Seek Operation
+  println("\n[TEST 3] Manual Seek Operation");
+  consumer.Seek(topic, records[0].partition, 0);
+  let seekPos = consumer.Position(topic, records[0].partition);
+
+  if (seekPos == 0) {
+    println("  ✓ PASS: Successfully rewound consumer partition position to offset 0");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: Seek offset mismatch");
+    failed += 1;
+  };
+
+  consumer.Close();
+  broker.Shutdown();
+
+  println("--------------------------------------------------------------------------------");
+  println(`  📊 RESULTS: ${passed} PASSED | ${failed} FAILED`);
+  println("================================================================================");
+}

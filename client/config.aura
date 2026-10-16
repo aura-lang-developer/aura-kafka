@@ -1,0 +1,65 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// client/config.aura - Client Configuration Options & Defaults
+// Based on org.apache.kafka.clients.producer.ProducerConfig & ConsumerConfig
+// ==============================================================================
+
+export fn DefaultBootstrapServers(): String => "localhost:9092";
+export fn DefaultAcks(): Int => 1;
+export fn DefaultRetries(): Int => 3;
+export fn DefaultBatchSize(): Int => 16384;
+export fn DefaultLingerMs(): Int => 0;
+export fn DefaultMaxRequestSize(): Int => 1048576;
+export fn DefaultTimeoutMs(): Int => 30000;
+
+export fn DefaultGroupId(): String => "default-group";
+export fn DefaultAutoCommit(): Bool => true;
+export fn DefaultAutoCommitIntervalMs(): Int => 5000;
+export fn DefaultAutoOffsetReset(): String => "latest";
+export fn DefaultSessionTimeoutMs(): Int => 10000;
+export fn DefaultHeartbeatIntervalMs(): Int => 3000;
+export fn DefaultMaxPollRecords(): Int => 500;
+
+/// Producer Configuration struct
+export struct ProducerConfig {
+  bootstrapServers: String,
+  acks: Int,
+  retries: Int,
+  batchSize: Int,
+  lingerMs: Int,
+  timeoutMs: Int
+};
+
+export fn NewDefaultProducerConfig(): ProducerConfig => {
+  return {
+    bootstrapServers: DefaultBootstrapServers(),
+    acks: DefaultAcks(),
+    retries: DefaultRetries(),
+    batchSize: DefaultBatchSize(),
+    lingerMs: DefaultLingerMs(),
+    timeoutMs: DefaultTimeoutMs()
+  };
+}
+
+/// Consumer Configuration struct
+export struct ConsumerConfig {
+  bootstrapServers: String,
+  groupId: String,
+  autoCommit: Bool,
+  autoCommitIntervalMs: Int,
+  autoOffsetReset: String,
+  sessionTimeoutMs: Int,
+  maxPollRecords: Int
+};
+
+export fn NewDefaultConsumerConfig(groupId: String): ConsumerConfig => {
+  return {
+    bootstrapServers: DefaultBootstrapServers(),
+    groupId: groupId,
+    autoCommit: DefaultAutoCommit(),
+    autoCommitIntervalMs: DefaultAutoCommitIntervalMs(),
+    autoOffsetReset: DefaultAutoOffsetReset(),
+    sessionTimeoutMs: DefaultSessionTimeoutMs(),
+    maxPollRecords: DefaultMaxPollRecords()
+  };
+}

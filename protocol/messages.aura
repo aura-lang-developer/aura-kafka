@@ -1,0 +1,329 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// protocol/messages.aura - Kafka Request & Response Wire Models
+// Based on org.apache.kafka.common.requests
+// ==============================================================================
+
+import { Record } from "../storage/record";
+
+// --- 1. Produce Messages ---
+
+export struct ProduceRequestPartition {
+  partition: Int,
+  records: []Record
+};
+
+export struct ProduceRequestTopic {
+  topic: String,
+  partitions: []ProduceRequestPartition
+};
+
+export struct ProduceRequest {
+  acks: Int,
+  timeoutMs: Int,
+  topics: []ProduceRequestTopic
+};
+
+export struct ProduceResponsePartition {
+  partition: Int,
+  errorCode: Int,
+  baseOffset: Int,
+  logAppendTimeMs: Int
+};
+
+export struct ProduceResponseTopic {
+  topic: String,
+  partitions: []ProduceResponsePartition
+};
+
+export struct ProduceResponse {
+  topics: []ProduceResponseTopic,
+  throttleTimeMs: Int
+};
+
+// --- 2. Fetch Messages ---
+
+export struct FetchRequestPartition {
+  partition: Int,
+  fetchOffset: Int,
+  maxBytes: Int
+};
+
+export struct FetchRequestTopic {
+  topic: String,
+  partitions: []FetchRequestPartition
+};
+
+export struct FetchRequest {
+  replicaId: Int,
+  maxWaitMs: Int,
+  minBytes: Int,
+  topics: []FetchRequestTopic
+};
+
+export struct FetchResponsePartition {
+  partition: Int,
+  errorCode: Int,
+  highWatermark: Int,
+  records: []Record
+};
+
+export struct FetchResponseTopic {
+  topic: String,
+  partitions: []FetchResponsePartition
+};
+
+export struct FetchResponse {
+  topics: []FetchResponseTopic,
+  throttleTimeMs: Int
+};
+
+// --- 3. Metadata Messages ---
+
+export struct MetadataRequest {
+  topics: []String,
+  allowAutoTopicCreation: Bool
+};
+
+export struct MetadataResponseBroker {
+  nodeId: Int,
+  host: String,
+  port: Int,
+  rack: String
+};
+
+export struct MetadataResponsePartition {
+  errorCode: Int,
+  partitionIndex: Int,
+  leaderId: Int,
+  leaderEpoch: Int,
+  replicaNodes: []Int,
+  isrNodes: []Int
+};
+
+export struct MetadataResponseTopic {
+  errorCode: Int,
+  name: String,
+  isInternal: Bool,
+  partitions: []MetadataResponsePartition
+};
+
+export struct MetadataResponse {
+  brokers: []MetadataResponseBroker,
+  clusterId: String,
+  controllerId: Int,
+  topics: []MetadataResponseTopic
+};
+
+// --- 4. ListOffsets Messages ---
+
+export struct ListOffsetsRequestPartition {
+  partition: Int,
+  timestamp: Int
+};
+
+export struct ListOffsetsRequestTopic {
+  topic: String,
+  partitions: []ListOffsetsRequestPartition
+};
+
+export struct ListOffsetsRequest {
+  replicaId: Int,
+  topics: []ListOffsetsRequestTopic
+};
+
+export struct ListOffsetsResponsePartition {
+  partition: Int,
+  errorCode: Int,
+  offset: Int,
+  timestamp: Int
+};
+
+export struct ListOffsetsResponseTopic {
+  topic: String,
+  partitions: []ListOffsetsResponsePartition
+};
+
+export struct ListOffsetsResponse {
+  topics: []ListOffsetsResponseTopic
+};
+
+// --- 5. Offset Commit Messages ---
+
+export struct OffsetCommitRequestPartition {
+  partition: Int,
+  committedOffset: Int,
+  committedMetadata: String
+};
+
+export struct OffsetCommitRequestTopic {
+  topic: String,
+  partitions: []OffsetCommitRequestPartition
+};
+
+export struct OffsetCommitRequest {
+  groupId: String,
+  generationId: Int,
+  memberId: String,
+  topics: []OffsetCommitRequestTopic
+};
+
+export struct OffsetCommitResponsePartition {
+  partition: Int,
+  errorCode: Int
+};
+
+export struct OffsetCommitResponseTopic {
+  topic: String,
+  partitions: []OffsetCommitResponsePartition
+};
+
+export struct OffsetCommitResponse {
+  topics: []OffsetCommitResponseTopic
+};
+
+// --- 6. Offset Fetch Messages ---
+
+export struct OffsetFetchRequestTopic {
+  topic: String,
+  partitions: []Int
+};
+
+export struct OffsetFetchRequest {
+  groupId: String,
+  topics: []OffsetFetchRequestTopic
+};
+
+export struct OffsetFetchResponsePartition {
+  partition: Int,
+  offset: Int,
+  metadata: String,
+  errorCode: Int
+};
+
+export struct OffsetFetchResponseTopic {
+  topic: String,
+  partitions: []OffsetFetchResponsePartition
+};
+
+export struct OffsetFetchResponse {
+  topics: []OffsetFetchResponseTopic
+};
+
+// --- 7. Find Coordinator Messages ---
+
+export struct FindCoordinatorRequest {
+  key: String,
+  keyType: Int
+};
+
+export struct FindCoordinatorResponse {
+  errorCode: Int,
+  nodeId: Int,
+  host: String,
+  port: Int
+};
+
+// --- 8. Consumer Group Messages ---
+
+export struct JoinGroupRequest {
+  groupId: String,
+  memberId: String,
+  protocolType: String,
+  groupProtocols: []String
+};
+
+export struct JoinGroupResponse {
+  errorCode: Int,
+  generationId: Int,
+  protocolName: String,
+  leaderId: String,
+  memberId: String,
+  members: []String
+};
+
+export struct SyncGroupRequest {
+  groupId: String,
+  generationId: Int,
+  memberId: String,
+  assignment: String
+};
+
+export struct SyncGroupResponse {
+  errorCode: Int,
+  assignment: String
+};
+
+export struct HeartbeatRequest {
+  groupId: String,
+  generationId: Int,
+  memberId: String
+};
+
+export struct HeartbeatResponse {
+  errorCode: Int
+};
+
+export struct LeaveGroupRequest {
+  groupId: String,
+  memberId: String
+};
+
+export struct LeaveGroupResponse {
+  errorCode: Int
+};
+
+// --- 9. ApiVersions Messages ---
+
+export struct ApiVersionKey {
+  apiKey: Int,
+  minVersion: Int,
+  maxVersion: Int
+};
+
+export struct ApiVersionsRequest {
+  clientSoftwareName: String,
+  clientSoftwareVersion: String
+};
+
+export struct ApiVersionsResponse {
+  errorCode: Int,
+  apiKeys: []ApiVersionKey
+};
+
+// --- 10. Topic Administration Messages ---
+
+export struct CreateTopicsRequestTopic {
+  name: String,
+  numPartitions: Int,
+  replicationFactor: Int
+};
+
+export struct CreateTopicsRequest {
+  topics: []CreateTopicsRequestTopic,
+  timeoutMs: Int
+};
+
+export struct CreateTopicsResponseTopic {
+  name: String,
+  errorCode: Int,
+  errorMessage: String
+};
+
+export struct CreateTopicsResponse {
+  topics: []CreateTopicsResponseTopic
+};
+
+export struct DeleteTopicsRequest {
+  topicNames: []String,
+  timeoutMs: Int
+};
+
+export struct DeleteTopicsResponseTopic {
+  name: String,
+  errorCode: Int
+};
+
+export struct DeleteTopicsResponse {
+  topics: []DeleteTopicsResponseTopic
+};

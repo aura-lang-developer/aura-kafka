@@ -1,0 +1,49 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// tools/console_consumer.aura - kafka-console-consumer CLI Tool
+// Based on bin/kafka-console-consumer.sh
+// ==============================================================================
+
+import { KafkaBroker, NewDefaultBroker } from "../server/broker";
+import { KafkaProducer, NewKafkaProducer, NewProducerRecord } from "../client/producer";
+import { KafkaConsumer, NewKafkaConsumer } from "../client/consumer";
+import { NewDefaultProducerConfig, NewDefaultConsumerConfig } from "../client/config";
+import { PrintBanner } from "../kafka";
+
+export fn main(): Unit => {
+  PrintBanner();
+  println("📥  AuraKafka Console Consumer (kafka-console-consumer)");
+  println("--------------------------------------------------");
+
+  let mut broker = NewDefaultBroker(1, 9092);
+  broker.Startup();
+
+  // Populate some sample records first
+  let pCfg = NewDefaultProducerConfig();
+  let mut producer = NewKafkaProducer(pCfg, broker);
+  producer.Send(NewProducerRecord("orders", "order-1", "{\"item\":\"laptop\",\"price\":1200}"));
+  producer.Send(NewProducerRecord("orders", "order-2", "{\"item\":\"mouse\",\"price\":25}"));
+  producer.Send(NewProducerRecord("orders", "order-3", "{\"item\":\"keyboard\",\"price\":80}"));
+
+  // Create consumer with earliest offset (equivalent to --from-beginning)
+  let mut cCfg = NewDefaultConsumerConfig("console-consumer-group");
+  cCfg.autoOffsetReset = "earliest";
+  let mut consumer = NewKafkaConsumer(cCfg, broker);
+
+  println("\n[CONSUME] Subscribing to 'orders' (--from-beginning)...");
+  consumer.Subscribe(["orders"]);
+
+  let records = consumer.Poll(1000);
+  println(`  ✓ Fetched ${len(records)} records:`);
+
+  let mut i = 0;
+  while i < len(records) {
+    let r = records[i];
+    println(`  [Offset: ${r.offset} | Partition: ${r.partition}] Key: ${r.key} => Value: ${r.value}`);
+    i += 1;
+  };
+
+  consumer.Close();
+  broker.Shutdown();
+  println("\n✓ Console consumer finished reading.");
+}

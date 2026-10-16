@@ -1,0 +1,87 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// kafka.aura - Root Public Facade & Core API
+// Based on Apache Kafka (https://github.com/apache/kafka)
+// ==============================================================================
+
+import {
+  ApiKeyProduce,
+  ApiKeyFetch,
+  ApiKeyListOffsets,
+  ApiKeyMetadata,
+  ApiKeyOffsetCommit,
+  ApiKeyOffsetFetch,
+  ApiKeyFindCoordinator,
+  ApiKeyJoinGroup,
+  ApiKeyHeartbeat,
+  ApiKeyLeaveGroup,
+  ApiKeySyncGroup,
+  ApiKeyApiVersions,
+  ApiKeyCreateTopics,
+  ApiKeyDeleteTopics,
+  ApiKeyName
+} from "./protocol/apikeys";
+
+import {
+  ErrNone,
+  ErrOffsetOutOfRange,
+  ErrCorruptMessage,
+  ErrUnknownTopicOrPartition,
+  ErrLeaderNotAvailable,
+  ErrNotLeaderOrFollower,
+  ErrRequestTimedOut,
+  ErrTopicAlreadyExists,
+  KafkaError,
+  NewKafkaError,
+  ErrorMessage
+} from "./protocol/errors";
+
+import {
+  Header,
+  NewHeader,
+  Record,
+  NewRecord,
+  NewRecordWithHeaders,
+  RecordBatch,
+  NewRecordBatch
+} from "./storage/record";
+
+import { LogSegment, NewLogSegment } from "./storage/segment";
+import { PartitionLog, NewPartitionLog } from "./storage/partition_log";
+import { LogManager, NewLogManager } from "./storage/log_manager";
+import { ConsumerGroup, GroupMember, NewConsumerGroup, NewGroupMember } from "./coordinator/group";
+import { GroupCoordinator, NewGroupCoordinator, OffsetAndMetadata, NewOffsetAndMetadata } from "./coordinator/coordinator";
+import { KRaftController, NewKRaftController } from "./coordinator/kraft";
+import { KafkaServerConfig, NewDefaultServerConfig } from "./server/config";
+import { KafkaBroker, NewKafkaBroker, NewDefaultBroker } from "./server/broker";
+import { ProducerConfig, ConsumerConfig, NewDefaultProducerConfig, NewDefaultConsumerConfig } from "./client/config";
+import { ProducerRecord, NewProducerRecord, RecordMetadata, KafkaProducer, NewKafkaProducer } from "./client/producer";
+import { ConsumerRecord, TopicPartition, NewTopicPartition, KafkaConsumer, NewKafkaConsumer } from "./client/consumer";
+import { NewTopic, MakeNewTopic, TopicDescription, AdminClient, NewAdminClient } from "./client/admin";
+
+
+// Type Aliases
+export type KafkaProducerClient = KafkaProducer;
+export type KafkaConsumerClient = KafkaConsumer;
+export type KafkaAdminClient = AdminClient;
+export type KafkaServer = KafkaBroker;
+
+// Semantic Version of AuraKafka corresponding to Apache Kafka 3.8.x release
+export fn KafkaVersion(): String => "3.8.0-aura";
+
+// Factory functions
+export fn CreateBroker(brokerId: Int, port: Int): KafkaBroker => NewDefaultBroker(brokerId, port);
+export fn CreateProducer(broker: KafkaBroker): KafkaProducer => NewKafkaProducer(NewDefaultProducerConfig(), broker);
+export fn CreateConsumer(groupId: String, broker: KafkaBroker): KafkaConsumer => NewKafkaConsumer(NewDefaultConsumerConfig(groupId), broker);
+export fn CreateAdmin(broker: KafkaBroker): AdminClient => NewAdminClient(broker);
+
+/// Prints the official AuraKafka ASCII banner
+export fn PrintBanner(): Unit => {
+  println("    _                 _  __        __ _          ");
+  println("   / \\   _   _ _ __ __ _| |/ /__ _ / _| | ____ _ ");
+  println("  / _ \\ | | | | '__/ _` | ' // _` | |_| |/ / _` |");
+  println(" / ___ \\| |_| | | | (_| | . \\ (_| |  _|   < (_| |");
+  println("/_/   \\_\\\\__,_|_|  \\__,_|_|\\_\\__,_|_| |_|\\_\\__,_|");
+  println(` Apache Kafka on Aura Language (v${KafkaVersion()})`);
+  println("==================================================");
+}

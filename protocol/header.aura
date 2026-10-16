@@ -1,0 +1,31 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// protocol/header.aura - Kafka Request & Response Wire Protocol Headers
+// Based on org.apache.kafka.common.requests.RequestHeader & ResponseHeader
+// ==============================================================================
+
+export struct RequestHeader {
+  apiKey: Int,
+  apiVersion: Int,
+  correlationId: Int,
+  clientId: String
+};
+
+export fn NewRequestHeader(apiKey: Int, apiVersion: Int, correlationId: Int, clientId: String): RequestHeader => {
+  {
+    apiKey: apiKey,
+    apiVersion: apiVersion,
+    correlationId: correlationId,
+    clientId: clientId
+  }
+}
+
+export struct ResponseHeader {
+  correlationId: Int
+};
+
+export fn NewResponseHeader(correlationId: Int): ResponseHeader => {
+  {
+    correlationId: correlationId
+  }
+}

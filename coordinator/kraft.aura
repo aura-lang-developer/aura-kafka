@@ -1,0 +1,97 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// coordinator/kraft.aura - KRaft (Kafka Raft Metadata Mode) Controller Engine
+// Based on org.apache.kafka.raft & org.apache.kafka.metadata
+// ==============================================================================
+
+/// Replicated metadata record stored in KRaft metadata partition
+export struct KRaftMetadataRecord {
+  epoch: Int,
+  recordType: String,
+  key: String,
+  value: String
+};
+
+/// High-performance KRaft Metadata Controller Quorum engine
+export struct KRaftController {
+  clusterId: String,
+  leaderBrokerId: Int,
+  leaderEpoch: Int,
+  registeredBrokers: []Int,
+  metadataRecords: []KRaftMetadataRecord
+};
+
+/// Creates a new KRaft Controller
+export fn NewKRaftController(clusterId: String, initialLeader: Int): KRaftController => {
+  let brokers: []Int = [initialLeader];
+  let emptyRecs: []KRaftMetadataRecord = [];
+
+  return {
+    clusterId: clusterId,
+    leaderBrokerId: initialLeader,
+    leaderEpoch: 1,
+    registeredBrokers: brokers,
+    metadataRecords: emptyRecs
+  };
+}
+
+/// Checks whether a broker is registered in the KRaft quorum
+fn (kraft: *KRaftController) IsBrokerRegistered(brokerId: Int): Bool => {
+  let mut i = 0;
+  while i < len(kraft.registeredBrokers) {
+    if (kraft.registeredBrokers[i] == brokerId) {
+      return true;
+    };
+    i += 1;
+  };
+  false
+}
+
+/// Registers a new active broker in KRaft quorum
+fn (kraft: *KRaftController) RegisterBroker(brokerId: Int): Unit => {
+  if (!kraft.IsBrokerRegistered(brokerId)) {
+    kraft.registeredBrokers.push(brokerId);
+    kraft.AppendRecord("BrokerRegistration", `${brokerId}`, "ONLINE");
+  }
+}
+
+/// Unregisters an offline broker
+fn (kraft: *KRaftController) UnregisterBroker(brokerId: Int): Unit => {
+  let mut newBrokers: []Int = [];
+  let mut i = 0;
+  while i < len(kraft.registeredBrokers) {
+    if (kraft.registeredBrokers[i] != brokerId) {
+      newBrokers.push(kraft.registeredBrokers[i]);
+    };
+    i += 1;
+  };
+  kraft.registeredBrokers = newBrokers;
+  kraft.AppendRecord("BrokerUnregistration", `${brokerId}`, "OFFLINE");
+  return;
+}
+
+/// Elects a broker as the active KRaft leader and increments epoch
+fn (kraft: *KRaftController) ElectLeader(brokerId: Int): Unit => {
+  kraft.leaderBrokerId = brokerId;
+  kraft.leaderEpoch += 1;
+  kraft.AppendRecord("LeaderElection", `${brokerId}`, `Epoch:${kraft.leaderEpoch}`);
+  return;
+}
+
+/// Appends an event to the KRaft metadata log
+fn (kraft: *KRaftController) AppendRecord(recordType: String, key: String, value: String): Int => {
+  let rec: KRaftMetadataRecord = {
+    epoch: kraft.leaderEpoch,
+    recordType: recordType,
+    key: key,
+    value: value
+  };
+  kraft.metadataRecords.push(rec);
+  len(kraft.metadataRecords) - 1
+}
+
+/// Returns whether the given broker is currently the KRaft leader
+fn (kraft: *KRaftController) IsLeader(brokerId: Int): Bool => kraft.leaderBrokerId == brokerId;
+
+/// Returns total registered brokers count
+fn (kraft: *KRaftController) NumBrokers(): Int => len(kraft.registeredBrokers);

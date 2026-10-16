@@ -1,0 +1,107 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// storage/segment.aura - Kafka Log Segment Engine
+// Based on org.apache.kafka.storage.internals.log.LogSegment
+// ==============================================================================
+
+import { Record, RecordSize } from "./record";
+
+/// A single immutable or active log segment file storing sequential records
+export struct LogSegment {
+  baseOffset: Int,
+  nextOffset: Int,
+  records: []Record,
+  maxBytes: Int,
+  currentBytes: Int,
+  closed: Bool
+};
+
+/// Creates a new LogSegment starting at baseOffset
+export fn NewLogSegment(baseOffset: Int, maxBytes: Int): LogSegment => {
+  let emptyRecords: []Record = [];
+  return {
+    baseOffset: baseOffset,
+    nextOffset: baseOffset,
+    records: emptyRecords,
+    maxBytes: maxBytes,
+    currentBytes: 0,
+    closed: false
+  };
+}
+
+/// Appends a slice of records into the segment, assigning monotonically increasing offsets
+fn (seg: *LogSegment) Append(newRecords: []Record): Result<Int, String> => {
+  if (seg.closed) {
+    return Err("LogSegment is closed for writes");
+  };
+
+  let count = len(newRecords);
+  if (count == 0) {
+    return Ok(seg.nextOffset);
+  };
+
+  let firstOffset = seg.nextOffset;
+  let mut i = 0;
+  while i < count {
+    let r = newRecords[i];
+    let assignedOffset = seg.nextOffset;
+    let rSize = RecordSize(r);
+
+    let stampedRecord: Record = {
+      offset: assignedOffset,
+      timestamp: if (r.timestamp > 0) { r.timestamp } else { 1672531199000 + assignedOffset },
+      key: r.key,
+      value: r.value,
+      headers: r.headers
+    };
+
+    seg.records.push(stampedRecord);
+    seg.currentBytes += rSize;
+    seg.nextOffset += 1;
+    i += 1;
+  };
+
+  Ok(firstOffset)
+}
+
+/// Reads records starting from startOffset up to maxBytes or maxCount
+fn (seg: *LogSegment) Read(startOffset: Int, maxBytes: Int, maxCount: Int): []Record => {
+  let mut result: []Record = [];
+  let total = len(seg.records);
+  let mut readBytes = 0;
+  let mut i = 0;
+
+  while i < total {
+    let r = seg.records[i];
+    if (r.offset >= startOffset) {
+      let rSize = RecordSize(r);
+      if (len(result) > 0 && (readBytes + rSize > maxBytes || len(result) >= maxCount)) {
+        return result;
+      };
+      result.push(r);
+      readBytes += rSize;
+      if (len(result) >= maxCount) {
+        return result;
+      };
+    };
+    i += 1;
+  };
+
+  result
+}
+
+/// Returns whether the segment contains a given offset
+fn (seg: *LogSegment) ContainsOffset(offset: Int): Bool => {
+  offset >= seg.baseOffset && offset < seg.nextOffset
+}
+
+/// Returns the byte size of this segment
+fn (seg: *LogSegment) Size(): Int => seg.currentBytes;
+
+/// Checks if segment has reached capacity and needs roll
+fn (seg: *LogSegment) IsFull(): Bool => seg.currentBytes >= seg.maxBytes;
+
+/// Marks the segment as closed/sealed
+fn (seg: *LogSegment) Close(): Unit => {
+  seg.closed = true;
+}

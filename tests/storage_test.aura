@@ -1,0 +1,126 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// tests/storage_test.aura - Unit Tests for Record, Segment & PartitionLog
+// ==============================================================================
+
+import {
+  Header,
+  NewHeader,
+  Record,
+  NewRecord,
+  NewRecordWithHeaders,
+  RecordSize
+} from "../storage/record";
+
+import { LogSegment, NewLogSegment } from "../storage/segment";
+import { PartitionLog, NewPartitionLog } from "../storage/partition_log";
+import { LogManager, NewLogManager } from "../storage/log_manager";
+
+export fn main(): Unit => {
+  let mut passed = 0;
+  let mut failed = 0;
+
+  println("================================================================================");
+  println("  🧪 AURAKAFKA - STORAGE ENGINE UNIT TESTS");
+  println("================================================================================");
+
+  // Test 1: Record Creation & Size
+  println("\n[TEST 1] Record Creation & Headers");
+  let headers: []Header = [NewHeader("trace-id", "xyz-123")];
+  let rec = NewRecordWithHeaders("user-1", "payload-data", headers);
+  let size = RecordSize(rec);
+
+  if (rec.key == "user-1" && rec.value == "payload-data" && len(rec.headers) == 1 && size > 0) {
+    println("  ✓ PASS: Record constructed with headers and valid byte size");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: Record construction error");
+    failed += 1;
+  };
+
+  // Test 2: Log Segment Append & Read
+  println("\n[TEST 2] LogSegment Append & Read Operations");
+  let mut seg = NewLogSegment(0, 500);
+  let r1 = NewRecord("k1", "v1");
+  let r2 = NewRecord("k2", "v2");
+  let appendRes = seg.Append([r1, r2]);
+
+  match appendRes {
+    Ok(baseOff) => {
+      if (baseOff == 0 && seg.nextOffset == 2) {
+        println("  ✓ PASS: Appended 2 records, baseOffset = 0, nextOffset = 2");
+        passed += 1;
+      } else {
+        println("  ✕ FAIL: Unexpected offset after append");
+        failed += 1;
+      };
+    },
+    Err(e) => {
+      println(`  ✕ FAIL: Append returned error: ${e}`);
+      failed += 1;
+    }
+  };
+
+  let readRecs = seg.Read(0, 1000, 10);
+  if (len(readRecs) == 2 && readRecs[0].offset == 0 && readRecs[1].offset == 1) {
+    println("  ✓ PASS: Read returned both records with expected sequential offsets");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: Read failed to return expected records");
+    failed += 1;
+  };
+
+  // Test 3: PartitionLog Rolling & HighWatermark
+  println("\n[TEST 3] PartitionLog Dynamic Segment Rolling");
+  let mut plog = NewPartitionLog("telemetry", 0, 80); // Small maxBytes to force segment roll
+  let batch1: []Record = [NewRecord("k1", "value-one-long-data")];
+  let batch2: []Record = [NewRecord("k2", "value-two-long-data")];
+
+  plog.AppendRecords(batch1);
+  plog.AppendRecords(batch2);
+
+  if (plog.GetLEO() == 2 && plog.GetHW() == 2 && len(plog.segments) >= 1) {
+    println("  ✓ PASS: PartitionLog rolled segments and updated LEO and HW to 2");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: PartitionLog LEO or HW mismatch");
+    failed += 1;
+  };
+
+  // Test 4: LogManager Multi-Topic Management
+  println("\n[TEST 4] LogManager Multi-Topic Operations");
+  let mut lm = NewLogManager(3, 10000);
+  let cRes = lm.CreateTopic("orders", 4);
+  let hasTopic = lm.HasTopic("orders");
+  let numParts = lm.GetNumPartitions("orders");
+
+  if (hasTopic && numParts == 4) {
+    println("  ✓ PASS: LogManager successfully created 'orders' with 4 partitions");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: Topic creation mismatch");
+    failed += 1;
+  };
+
+  let plog0 = lm.GetOrCreatePartitionLog("orders", 0);
+  if (plog0.topic == "orders" && plog0.partitionId == 0) {
+    println("  ✓ PASS: Retrieved PartitionLog for orders-0");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: PartitionLog retrieval error");
+    failed += 1;
+  };
+
+  let delRes = lm.DeleteTopic("orders");
+  if (delRes && !lm.HasTopic("orders")) {
+    println("  ✓ PASS: Successfully deleted topic 'orders'");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: Topic deletion error");
+    failed += 1;
+  };
+
+  println("--------------------------------------------------------------------------------");
+  println(`  📊 RESULTS: ${passed} PASSED | ${failed} FAILED`);
+  println("================================================================================");
+}

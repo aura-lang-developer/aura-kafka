@@ -1,0 +1,533 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// server/broker.aura - Kafka Broker Engine & Core Protocol Dispatcher
+// Based on kafka.server.KafkaServer / BrokerServer
+// ==============================================================================
+
+import {
+  ProduceRequest,
+  ProduceResponse,
+  ProduceResponseTopic,
+  ProduceResponsePartition,
+  FetchRequest,
+  FetchResponse,
+  FetchResponseTopic,
+  FetchResponsePartition,
+  MetadataRequest,
+  MetadataResponse,
+  MetadataResponseBroker,
+  MetadataResponseTopic,
+  MetadataResponsePartition,
+  ListOffsetsRequest,
+  ListOffsetsResponse,
+  ListOffsetsResponseTopic,
+  ListOffsetsResponsePartition,
+  OffsetCommitRequest,
+  OffsetCommitResponse,
+  OffsetCommitResponseTopic,
+  OffsetCommitResponsePartition,
+  OffsetFetchRequest,
+  OffsetFetchResponse,
+  OffsetFetchResponseTopic,
+  OffsetFetchResponsePartition,
+  FindCoordinatorRequest,
+  FindCoordinatorResponse,
+  JoinGroupRequest,
+  JoinGroupResponse,
+  SyncGroupRequest,
+  SyncGroupResponse,
+  HeartbeatRequest,
+  HeartbeatResponse,
+  LeaveGroupRequest,
+  LeaveGroupResponse,
+  ApiVersionsRequest,
+  ApiVersionsResponse,
+  ApiVersionKey,
+  CreateTopicsRequest,
+  CreateTopicsResponse,
+  CreateTopicsResponseTopic,
+  DeleteTopicsRequest,
+  DeleteTopicsResponse,
+  DeleteTopicsResponseTopic
+} from "../protocol/messages";
+
+import {
+  ErrNone,
+  ErrUnknownTopicOrPartition,
+  ErrNotLeaderOrFollower,
+  ErrTopicAlreadyExists
+} from "../protocol/errors";
+
+import {
+  ApiKeyProduce,
+  ApiKeyFetch,
+  ApiKeyListOffsets,
+  ApiKeyMetadata,
+  ApiKeyOffsetCommit,
+  ApiKeyOffsetFetch,
+  ApiKeyFindCoordinator,
+  ApiKeyJoinGroup,
+  ApiKeyHeartbeat,
+  ApiKeyLeaveGroup,
+  ApiKeySyncGroup,
+  ApiKeyApiVersions,
+  ApiKeyCreateTopics,
+  ApiKeyDeleteTopics
+} from "../protocol/apikeys";
+
+import { LogManager, NewLogManager } from "../storage/log_manager";
+import { PartitionLog } from "../storage/partition_log";
+import { Record } from "../storage/record";
+import { GroupCoordinator, NewGroupCoordinator } from "../coordinator/coordinator";
+import { KRaftController, NewKRaftController } from "../coordinator/kraft";
+import { ReplicaManager, NewReplicaManager } from "./replica_manager";
+import { KafkaServerConfig, NewDefaultServerConfig } from "./config";
+
+/// The complete Apache Kafka Broker instance running in Aura
+export struct KafkaBroker {
+  config: KafkaServerConfig,
+  logManager: LogManager,
+  coordinator: GroupCoordinator,
+  kraft: KRaftController,
+  replicaManager: ReplicaManager,
+  isRunning: Bool
+};
+
+/// Instantiates a new KafkaBroker with given configuration
+export fn NewKafkaBroker(config: KafkaServerConfig): KafkaBroker => {
+  let lm = NewLogManager(config.numPartitions, config.segmentMaxBytes);
+  let gc = NewGroupCoordinator();
+  let kraft = NewKRaftController(`aura-cluster-${config.brokerId}`, config.brokerId);
+  let rm = NewReplicaManager(config.brokerId);
+
+  return {
+    config: config,
+    logManager: lm,
+    coordinator: gc,
+    kraft: kraft,
+    replicaManager: rm,
+    isRunning: false
+  };
+}
+
+/// Convenience constructor with broker ID and port
+export fn NewDefaultBroker(brokerId: Int, port: Int): KafkaBroker => {
+  let cfg = NewDefaultServerConfig(brokerId, port);
+  return NewKafkaBroker(cfg);
+}
+
+/// Boots up the Kafka broker service
+fn (b: *KafkaBroker) Startup(): Unit => {
+  b.isRunning = true;
+  b.kraft.RegisterBroker(b.config.brokerId);
+  println(`[KafkaBroker-${b.config.brokerId}] Server started on ${b.config.host}:${b.config.port} (KRaft Mode)`);
+}
+
+/// Shuts down the Kafka broker service
+fn (b: *KafkaBroker) Shutdown(): Unit => {
+  b.isRunning = false;
+  b.kraft.UnregisterBroker(b.config.brokerId);
+  println(`[KafkaBroker-${b.config.brokerId}] Server shut down gracefully.`);
+}
+
+/// Checks whether this broker is the leader for given topic-partition
+fn (b: *KafkaBroker) IsLeader(topic: String, partition: Int): Bool => {
+  return true;
+}
+
+/// Handles PRODUCE request (API Key 0)
+fn (b: *KafkaBroker) HandleProduce(req: ProduceRequest): ProduceResponse => {
+  let mut respTopics: []ProduceResponseTopic = [];
+  let numTopics = len(req.topics);
+  let mut tIdx = 0;
+
+  while tIdx < numTopics {
+    let reqTopic = req.topics[tIdx];
+    let mut respParts: []ProduceResponsePartition = [];
+    let numParts = len(reqTopic.partitions);
+    let mut pIdx = 0;
+
+    while pIdx < numParts {
+      let reqPart = reqTopic.partitions[pIdx];
+      let pId = reqPart.partition;
+
+      let mut plog = b.logManager.GetOrCreatePartitionLog(reqTopic.topic, pId);
+      let appendRes = plog.AppendRecords(reqPart.records);
+      b.logManager.SetPartitionLog(reqTopic.topic, pId, plog);
+
+      match appendRes {
+        Ok(baseOffset) => {
+          respParts.push({
+            partition: pId,
+            errorCode: ErrNone(),
+            baseOffset: baseOffset,
+            logAppendTimeMs: 1672531199000
+          });
+        },
+        Err(err) => {
+          respParts.push({
+            partition: pId,
+            errorCode: ErrUnknownTopicOrPartition(),
+            baseOffset: -1,
+            logAppendTimeMs: 0
+          });
+        }
+      };
+      pIdx += 1;
+    };
+
+    respTopics.push({
+      topic: reqTopic.topic,
+      partitions: respParts
+    });
+    tIdx += 1;
+  };
+
+  return {
+    topics: respTopics,
+    throttleTimeMs: 0
+  };
+}
+
+/// Handles FETCH request (API Key 1)
+fn (b: *KafkaBroker) HandleFetch(req: FetchRequest): FetchResponse => {
+  let mut respTopics: []FetchResponseTopic = [];
+  let numTopics = len(req.topics);
+  let mut tIdx = 0;
+
+  while tIdx < numTopics {
+    let reqTopic = req.topics[tIdx];
+    let mut respParts: []FetchResponsePartition = [];
+    let numParts = len(reqTopic.partitions);
+    let mut pIdx = 0;
+
+    while pIdx < numParts {
+      let reqPart = reqTopic.partitions[pIdx];
+      let pId = reqPart.partition;
+
+      if (!b.logManager.HasTopic(reqTopic.topic)) {
+        let emptyRecs: []Record = [];
+        respParts.push({
+          partition: pId,
+          errorCode: ErrUnknownTopicOrPartition(),
+          highWatermark: 0,
+          records: emptyRecs
+        });
+      } else {
+        let mut plog = b.logManager.GetOrCreatePartitionLog(reqTopic.topic, pId);
+        let recs = plog.ReadRecords(reqPart.fetchOffset, reqPart.maxBytes, 100);
+        respParts.push({
+          partition: pId,
+          errorCode: ErrNone(),
+          highWatermark: plog.GetHW(),
+          records: recs
+        });
+      };
+      pIdx += 1;
+    };
+
+    respTopics.push({
+      topic: reqTopic.topic,
+      partitions: respParts
+    });
+    tIdx += 1;
+  };
+
+  return {
+    topics: respTopics,
+    throttleTimeMs: 0
+  };
+}
+
+/// Handles METADATA request (API Key 3)
+fn (b: *KafkaBroker) HandleMetadata(req: MetadataRequest): MetadataResponse => {
+  let brokers: []MetadataResponseBroker = [{
+    nodeId: b.config.brokerId,
+    host: b.config.host,
+    port: b.config.port,
+    rack: "rack-1"
+  }];
+
+  let targetTopics = if (len(req.topics) == 0) {
+    b.logManager.AllTopics()
+  } else {
+    req.topics
+  };
+
+  let mut respTopics: []MetadataResponseTopic = [];
+  let mut tIdx = 0;
+  while tIdx < len(targetTopics) {
+    let topicName = targetTopics[tIdx];
+    let exists = b.logManager.HasTopic(topicName);
+
+    if (!exists && req.allowAutoTopicCreation && b.config.autoCreateTopicsEnable) {
+      b.logManager.CreateTopic(topicName, b.config.numPartitions);
+    };
+
+    if (!b.logManager.HasTopic(topicName)) {
+      let emptyP: []MetadataResponsePartition = [];
+      respTopics.push({
+        errorCode: ErrUnknownTopicOrPartition(),
+        name: topicName,
+        isInternal: false,
+        partitions: emptyP
+      });
+    } else {
+      let numParts = b.logManager.GetNumPartitions(topicName);
+      let mut partList: []MetadataResponsePartition = [];
+      let mut p = 0;
+      while p < numParts {
+        let repNodes: []Int = [b.config.brokerId];
+        let isrNodes: []Int = [b.config.brokerId];
+        partList.push({
+          errorCode: ErrNone(),
+          partitionIndex: p,
+          leaderId: b.config.brokerId,
+          leaderEpoch: 1,
+          replicaNodes: repNodes,
+          isrNodes: isrNodes
+        });
+        p += 1;
+      };
+
+      respTopics.push({
+        errorCode: ErrNone(),
+        name: topicName,
+        isInternal: false,
+        partitions: partList
+      });
+    };
+    tIdx += 1;
+  };
+
+  return {
+    brokers: brokers,
+    clusterId: b.kraft.clusterId,
+    controllerId: b.kraft.leaderBrokerId,
+    topics: respTopics
+  };
+}
+
+/// Handles LIST_OFFSETS request (API Key 2)
+fn (b: *KafkaBroker) HandleListOffsets(req: ListOffsetsRequest): ListOffsetsResponse => {
+  let mut respTopics: []ListOffsetsResponseTopic = [];
+  let mut tIdx = 0;
+
+  while tIdx < len(req.topics) {
+    let t = req.topics[tIdx];
+    let mut respParts: []ListOffsetsResponsePartition = [];
+    let mut pIdx = 0;
+
+    while pIdx < len(t.partitions) {
+      let p = t.partitions[pIdx];
+      let mut plog = b.logManager.GetOrCreatePartitionLog(t.topic, p.partition);
+      let offset = if (p.timestamp == -2) {
+        plog.GetStartOffset()
+      } else {
+        plog.GetLEO()
+      };
+
+      respParts.push({
+        partition: p.partition,
+        errorCode: ErrNone(),
+        offset: offset,
+        timestamp: 1672531199000
+      });
+      pIdx += 1;
+    };
+
+    respTopics.push({
+      topic: t.topic,
+      partitions: respParts
+    });
+    tIdx += 1;
+  };
+
+  return { topics: respTopics };
+}
+
+/// Handles OFFSET_COMMIT request (API Key 8)
+fn (b: *KafkaBroker) HandleOffsetCommit(req: OffsetCommitRequest): OffsetCommitResponse => {
+  let mut respTopics: []OffsetCommitResponseTopic = [];
+  let mut tIdx = 0;
+
+  while tIdx < len(req.topics) {
+    let t = req.topics[tIdx];
+    let mut respParts: []OffsetCommitResponsePartition = [];
+    let mut pIdx = 0;
+
+    while pIdx < len(t.partitions) {
+      let p = t.partitions[pIdx];
+      let errCode = b.coordinator.CommitOffset(req.groupId, t.topic, p.partition, p.committedOffset, p.committedMetadata);
+      respParts.push({
+        partition: p.partition,
+        errorCode: errCode
+      });
+      pIdx += 1;
+    };
+
+    respTopics.push({
+      topic: t.topic,
+      partitions: respParts
+    });
+    tIdx += 1;
+  };
+
+  return { topics: respTopics };
+}
+
+/// Handles OFFSET_FETCH request (API Key 9)
+fn (b: *KafkaBroker) HandleOffsetFetch(req: OffsetFetchRequest): OffsetFetchResponse => {
+  let mut respTopics: []OffsetFetchResponseTopic = [];
+  let mut tIdx = 0;
+
+  while tIdx < len(req.topics) {
+    let t = req.topics[tIdx];
+    let mut respParts: []OffsetFetchResponsePartition = [];
+    let mut pIdx = 0;
+
+    while pIdx < len(t.partitions) {
+      let partId = t.partitions[pIdx];
+      let offMeta = b.coordinator.FetchOffset(req.groupId, t.topic, partId);
+      respParts.push({
+        partition: partId,
+        offset: offMeta.offset,
+        metadata: offMeta.metadata,
+        errorCode: ErrNone()
+      });
+      pIdx += 1;
+    };
+
+    respTopics.push({
+      topic: t.topic,
+      partitions: respParts
+    });
+    tIdx += 1;
+  };
+
+  return { topics: respTopics };
+}
+
+/// Handles FIND_COORDINATOR request (API Key 10)
+fn (b: *KafkaBroker) HandleFindCoordinator(req: FindCoordinatorRequest): FindCoordinatorResponse => {
+  return {
+    errorCode: ErrNone(),
+    nodeId: b.config.brokerId,
+    host: b.config.host,
+    port: b.config.port
+  };
+}
+
+/// Handles JOIN_GROUP request (API Key 11)
+fn (b: *KafkaBroker) HandleJoinGroup(req: JoinGroupRequest): JoinGroupResponse => {
+  let res = b.coordinator.OnJoinGroup(req.groupId, req.memberId, "client-app", req.groupProtocols);
+  return {
+    errorCode: res.errorCode,
+    generationId: res.generationId,
+    protocolName: res.protocolName,
+    leaderId: res.leaderId,
+    memberId: res.memberId,
+    members: res.members
+  };
+}
+
+/// Handles SYNC_GROUP request (API Key 14)
+fn (b: *KafkaBroker) HandleSyncGroup(req: SyncGroupRequest): SyncGroupResponse => {
+  let res = b.coordinator.OnSyncGroup(req.groupId, req.generationId, req.memberId, req.assignment);
+  return {
+    errorCode: res.errorCode,
+    assignment: res.assignment
+  };
+}
+
+/// Handles HEARTBEAT request (API Key 12)
+fn (b: *KafkaBroker) HandleHeartbeat(req: HeartbeatRequest): HeartbeatResponse => {
+  let code = b.coordinator.OnHeartbeat(req.groupId, req.generationId, req.memberId);
+  return { errorCode: code };
+}
+
+/// Handles LEAVE_GROUP request (API Key 13)
+fn (b: *KafkaBroker) HandleLeaveGroup(req: LeaveGroupRequest): LeaveGroupResponse => {
+  let code = b.coordinator.OnLeaveGroup(req.groupId, req.memberId);
+  return { errorCode: code };
+}
+
+/// Handles API_VERSIONS request (API Key 18)
+fn (b: *KafkaBroker) HandleApiVersions(req: ApiVersionsRequest): ApiVersionsResponse => {
+  let keys: []ApiVersionKey = [
+    { apiKey: ApiKeyProduce(), minVersion: 0, maxVersion: 9 },
+    { apiKey: ApiKeyFetch(), minVersion: 0, maxVersion: 12 },
+    { apiKey: ApiKeyListOffsets(), minVersion: 0, maxVersion: 6 },
+    { apiKey: ApiKeyMetadata(), minVersion: 0, maxVersion: 11 },
+    { apiKey: ApiKeyOffsetCommit(), minVersion: 0, maxVersion: 8 },
+    { apiKey: ApiKeyOffsetFetch(), minVersion: 0, maxVersion: 7 },
+    { apiKey: ApiKeyFindCoordinator(), minVersion: 0, maxVersion: 3 },
+    { apiKey: ApiKeyJoinGroup(), minVersion: 0, maxVersion: 7 },
+    { apiKey: ApiKeyHeartbeat(), minVersion: 0, maxVersion: 4 },
+    { apiKey: ApiKeyLeaveGroup(), minVersion: 0, maxVersion: 4 },
+    { apiKey: ApiKeySyncGroup(), minVersion: 0, maxVersion: 5 },
+    { apiKey: ApiKeyApiVersions(), minVersion: 0, maxVersion: 3 },
+    { apiKey: ApiKeyCreateTopics(), minVersion: 0, maxVersion: 5 },
+    { apiKey: ApiKeyDeleteTopics(), minVersion: 0, maxVersion: 4 }
+  ];
+
+  return {
+    errorCode: ErrNone(),
+    apiKeys: keys
+  };
+}
+
+/// Handles CREATE_TOPICS request (API Key 19)
+fn (b: *KafkaBroker) HandleCreateTopics(req: CreateTopicsRequest): CreateTopicsResponse => {
+  let mut respTopics: []CreateTopicsResponseTopic = [];
+  let mut i = 0;
+
+  while i < len(req.topics) {
+    let t = req.topics[i];
+    let created = b.logManager.CreateTopic(t.name, t.numPartitions);
+    match created {
+      Ok(_) => {
+        b.kraft.AppendRecord("CreateTopic", t.name, `Partitions:${t.numPartitions}`);
+        respTopics.push({
+          name: t.name,
+          errorCode: ErrNone(),
+          errorMessage: ""
+        });
+      },
+      Err(msg) => {
+        respTopics.push({
+          name: t.name,
+          errorCode: ErrTopicAlreadyExists(),
+          errorMessage: msg
+        });
+      }
+    };
+    i += 1;
+  };
+
+  return { topics: respTopics };
+}
+
+/// Handles DELETE_TOPICS request (API Key 20)
+fn (b: *KafkaBroker) HandleDeleteTopics(req: DeleteTopicsRequest): DeleteTopicsResponse => {
+  let mut respTopics: []DeleteTopicsResponseTopic = [];
+  let mut i = 0;
+
+  while i < len(req.topicNames) {
+    let name = req.topicNames[i];
+    let deleted = b.logManager.DeleteTopic(name);
+    let code = if (deleted) {
+      b.kraft.AppendRecord("DeleteTopic", name, "DELETED");
+      ErrNone()
+    } else {
+      ErrUnknownTopicOrPartition()
+    };
+    respTopics.push({
+      name: name,
+      errorCode: code
+    });
+    i += 1;
+  };
+
+  return { topics: respTopics };
+}

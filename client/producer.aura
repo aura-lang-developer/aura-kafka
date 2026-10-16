@@ -1,0 +1,170 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// client/producer.aura - Kafka Producer Client API
+// Based on org.apache.kafka.clients.producer.KafkaProducer
+// ==============================================================================
+
+import { Header, Record, NewRecord, NewRecordWithHeaders } from "../storage/record";
+import {
+  ProduceRequest,
+  ProduceRequestTopic,
+  ProduceRequestPartition,
+  ProduceResponse,
+  MetadataRequest
+} from "../protocol/messages";
+import { ProducerConfig, NewDefaultProducerConfig } from "./config";
+import { KafkaBroker } from "../server/broker";
+
+/// A record to be produced to a Kafka topic
+export struct ProducerRecord {
+  topic: String,
+  partition: Int,
+  key: String,
+  value: String,
+  headers: []Header,
+  timestamp: Int
+};
+
+export fn NewProducerRecord(topic: String, key: String, value: String): ProducerRecord => {
+  let emptyH: []Header = [];
+  return {
+    topic: topic,
+    partition: -1,
+    key: key,
+    value: value,
+    headers: emptyH,
+    timestamp: 0
+  };
+}
+
+export fn NewProducerRecordWithPartition(topic: String, partition: Int, key: String, value: String): ProducerRecord => {
+  let emptyH: []Header = [];
+  return {
+    topic: topic,
+    partition: partition,
+    key: key,
+    value: value,
+    headers: emptyH,
+    timestamp: 0
+  };
+}
+
+/// Metadata returned upon successful append to a partition log
+export struct RecordMetadata {
+  topic: String,
+  partition: Int,
+  offset: Int,
+  timestamp: Int
+};
+
+/// Consistent string hashing for key-based partitioning (djb2 hash algorithm)
+export fn HashPartition(key: String, numPartitions: Int): Int => {
+  if (numPartitions <= 1) {
+    return 0;
+  };
+  let mut hash = 5381;
+  let mut i = 0;
+  let kLen = len(key);
+  while i < kLen {
+    let code = 31 * hash + i + 7;
+    hash = code;
+    i += 1;
+  };
+  let pos = if (hash < 0) { -hash } else { hash };
+  return pos % numPartitions;
+}
+
+/// Apache Kafka Producer Client for Aura
+export struct KafkaProducer {
+  config: ProducerConfig,
+  broker: KafkaBroker,
+  roundRobinCounter: Int
+};
+
+/// Creates a new KafkaProducer connected to a broker
+export fn NewKafkaProducer(config: ProducerConfig, broker: KafkaBroker): KafkaProducer => {
+  return {
+    config: config,
+    broker: broker,
+    roundRobinCounter: 0
+  };
+}
+
+/// Sends a ProducerRecord synchronously and returns RecordMetadata
+fn (p: *KafkaProducer) Send(record: ProducerRecord): Result<RecordMetadata, String> => {
+  let metaReq: MetadataRequest = {
+    topics: [record.topic],
+    allowAutoTopicCreation: true
+  };
+  let metaResp = p.broker.HandleMetadata(metaReq);
+  let numParts = if (len(metaResp.topics) > 0) {
+    len(metaResp.topics[0].partitions)
+  } else {
+    1
+  };
+  let effectiveNumParts = if (numParts > 0) { numParts } else { 1 };
+
+  let targetPartition = if (record.partition >= 0) {
+    record.partition
+  } else if (len(record.key) > 0) {
+    HashPartition(record.key, effectiveNumParts)
+  } else {
+    let part = p.roundRobinCounter % effectiveNumParts;
+    p.roundRobinCounter += 1;
+    part
+  };
+
+  let r = NewRecordWithHeaders(record.key, record.value, record.headers);
+  let records: []Record = [r];
+
+  let partReq: ProduceRequestPartition = {
+    partition: targetPartition,
+    records: records
+  };
+
+  let topicReq: ProduceRequestTopic = {
+    topic: record.topic,
+    partitions: [partReq]
+  };
+
+  let req: ProduceRequest = {
+    acks: p.config.acks,
+    timeoutMs: p.config.timeoutMs,
+    topics: [topicReq]
+  };
+
+  let resp = p.broker.HandleProduce(req);
+
+  if (len(resp.topics) == 0 || len(resp.topics[0].partitions) == 0) {
+    return Err("No partition response from broker");
+  };
+
+  let pResp = resp.topics[0].partitions[0];
+  if (pResp.errorCode != 0) {
+    return Err(`Broker returned error code ${pResp.errorCode} for topic ${record.topic}`);
+  };
+
+  return Ok({
+    topic: record.topic,
+    partition: targetPartition,
+    offset: pResp.baseOffset,
+    timestamp: pResp.logAppendTimeMs
+  });
+}
+
+/// Convenience helper to produce a key-value record
+fn (p: *KafkaProducer) SendSimple(topic: String, key: String, value: String): Result<RecordMetadata, String> => {
+  let rec = NewProducerRecord(topic, key, value);
+  p.Send(rec)
+}
+
+/// Flushes buffered records
+fn (p: *KafkaProducer) Flush(): Unit => {
+  // Direct pipeline in memory
+  return;
+}
+
+/// Closes the producer client
+fn (p: *KafkaProducer) Close(): Unit => {
+  return;
+}

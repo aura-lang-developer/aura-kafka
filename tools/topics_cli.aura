@@ -1,0 +1,64 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// tools/topics_cli.aura - kafka-topics CLI Tool
+// Based on bin/kafka-topics.sh
+// ==============================================================================
+
+import { KafkaBroker, NewDefaultBroker } from "../server/broker";
+import { AdminClient, NewAdminClient, MakeNewTopic } from "../client/admin";
+import { PrintBanner } from "../kafka";
+
+export fn main(): Unit => {
+  PrintBanner();
+  println("🛠️  AuraKafka Topics CLI (kafka-topics)");
+  println("--------------------------------------------------");
+
+  let mut broker = NewDefaultBroker(1, 9092);
+  broker.Startup();
+
+  let mut admin = NewAdminClient(broker);
+
+  // 1. Create Topics
+  println("\n[ACTION] Creating topics: 'orders-stream' (3 partitions), 'user-events' (2 partitions)...");
+  let t1 = MakeNewTopic("orders-stream", 3, 1);
+  let t2 = MakeNewTopic("user-events", 2, 1);
+  let newTopics = [t1, t2];
+
+  let res = admin.CreateTopics(newTopics);
+  match res {
+    Ok(_) => println("  ✓ Topics created successfully!"),
+    Err(e) => println(`  ✕ Error: ${e}`)
+  };
+
+  // 2. List Topics
+  println("\n[ACTION] Listing topics:");
+  let topics = admin.ListTopics();
+  let mut i = 0;
+  while i < len(topics) {
+    println(`  • Topic: ${topics[i]}`);
+    i += 1;
+  };
+
+  // 3. Describe Topics
+  println("\n[ACTION] Describing topic 'orders-stream':");
+  let descs = admin.DescribeTopics(["orders-stream"]);
+  let mut dIdx = 0;
+  while dIdx < len(descs) {
+    let d = descs[dIdx];
+    println(`  Topic: ${d.name} (Partitions: ${len(d.partitions)})`);
+    let mut pIdx = 0;
+    while pIdx < len(d.partitions) {
+      let p = d.partitions[pIdx];
+      println(`    Partition: ${p.partition} | Leader: ${p.leader} | Replicas: [${p.replicas[0]}] | Isr: [${p.isr[0]}]`);
+      pIdx += 1;
+    };
+    dIdx += 1;
+  };
+
+  // 4. Cluster Description
+  println("\n[ACTION] Cluster Metadata:");
+  println(`  ${admin.DescribeCluster()}`);
+
+  broker.Shutdown();
+  println("\n✓ Topics CLI command completed successfully.");
+}

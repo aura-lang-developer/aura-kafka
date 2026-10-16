@@ -1,0 +1,240 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// client/consumer.aura - Kafka Consumer Client API
+// Based on org.apache.kafka.clients.consumer.KafkaConsumer
+// ==============================================================================
+
+import { Header, Record } from "../storage/record";
+import {
+  FetchRequest,
+  FetchRequestTopic,
+  FetchRequestPartition,
+  OffsetCommitRequest,
+  OffsetCommitRequestTopic,
+  OffsetCommitRequestPartition,
+  JoinGroupRequest,
+  LeaveGroupRequest
+} from "../protocol/messages";
+import { ConsumerConfig, NewDefaultConsumerConfig } from "./config";
+import { KafkaBroker } from "../server/broker";
+
+/// Topic and partition pair identifier
+export struct TopicPartition {
+  topic: String,
+  partition: Int
+};
+
+export fn NewTopicPartition(topic: String, partition: Int): TopicPartition => {
+  return { topic: topic, partition: partition };
+}
+
+/// Record consumed from a Kafka partition
+export struct ConsumerRecord {
+  topic: String,
+  partition: Int,
+  offset: Int,
+  timestamp: Int,
+  key: String,
+  value: String,
+  headers: []Header
+};
+
+/// Apache Kafka Consumer Client for Aura
+export struct KafkaConsumer {
+  config: ConsumerConfig,
+  broker: KafkaBroker,
+  subscribedTopics: []String,
+  assignedPartitions: []TopicPartition,
+  currentOffsets: Any,
+  memberId: String,
+  generationId: Int
+};
+
+/// Creates a new KafkaConsumer instance connected to a broker
+export fn NewKafkaConsumer(config: ConsumerConfig, broker: KafkaBroker): KafkaConsumer => {
+  let offMap: Any = {};
+  let emptyTopics: []String = [];
+  let emptyParts: []TopicPartition = [];
+
+  return {
+    config: config,
+    broker: broker,
+    subscribedTopics: emptyTopics,
+    assignedPartitions: emptyParts,
+    currentOffsets: offMap,
+    memberId: "",
+    generationId: 0
+  };
+}
+
+/// Subscribes the consumer to a list of topics and joins the consumer group
+fn (c: *KafkaConsumer) Subscribe(topics: []String): Unit => {
+  c.subscribedTopics = topics;
+  let protocols: []String = ["range", "roundrobin"];
+  let joinReq: JoinGroupRequest = {
+    groupId: c.config.groupId,
+    memberId: c.memberId,
+    protocolType: "consumer",
+    groupProtocols: protocols
+  };
+
+  let joinResp = c.broker.HandleJoinGroup(joinReq);
+  c.memberId = joinResp.memberId;
+  c.generationId = joinResp.generationId;
+
+  // Auto-assign partitions for subscribed topics
+  let mut assignments: []TopicPartition = [];
+  let mut tIdx = 0;
+  while tIdx < len(topics) {
+    let t = topics[tIdx];
+    let numParts = c.broker.logManager.GetNumPartitions(t);
+    let effectiveParts = if (numParts > 0) { numParts } else { c.broker.config.numPartitions };
+    let mut p = 0;
+    while p < effectiveParts {
+      assignments.push(NewTopicPartition(t, p));
+      p += 1;
+    };
+    tIdx += 1;
+  };
+  c.assignedPartitions = assignments;
+}
+
+/// Directly assigns specific partitions to this consumer (standalone mode)
+fn (c: *KafkaConsumer) Assign(partitions: []TopicPartition): Unit => {
+  c.assignedPartitions = partitions;
+}
+
+/// Fetches records for all assigned partitions
+fn (c: *KafkaConsumer) Poll(timeoutMs: Int): []ConsumerRecord => {
+  let mut results: []ConsumerRecord = [];
+  let numAssigned = len(c.assignedPartitions);
+  if (numAssigned == 0) {
+    return results;
+  };
+
+  let mut i = 0;
+  while i < numAssigned {
+    let tp = c.assignedPartitions[i];
+    let key = `${tp.topic}:${tp.partition}`;
+    let mut currentOffset = c.currentOffsets[key];
+
+    if (currentOffset == undefined || currentOffset == null) {
+      if (c.config.autoOffsetReset == "earliest") {
+        currentOffset = 0;
+      } else {
+        let mut plog = c.broker.logManager.GetOrCreatePartitionLog(tp.topic, tp.partition);
+        currentOffset = plog.GetLEO();
+      };
+      c.currentOffsets[key] = currentOffset;
+    };
+
+    let fetchPart: FetchRequestPartition = {
+      partition: tp.partition,
+      fetchOffset: currentOffset,
+      maxBytes: 65536
+    };
+
+    let fetchTopic: FetchRequestTopic = {
+      topic: tp.topic,
+      partitions: [fetchPart]
+    };
+
+    let req: FetchRequest = {
+      replicaId: -1,
+      maxWaitMs: timeoutMs,
+      minBytes: 1,
+      topics: [fetchTopic]
+    };
+
+    let resp = c.broker.HandleFetch(req);
+    if (len(resp.topics) > 0 && len(resp.topics[0].partitions) > 0) {
+      let pResp = resp.topics[0].partitions[0];
+      let recs = pResp.records;
+      let rCount = len(recs);
+      let mut rIdx = 0;
+
+      while rIdx < rCount {
+        let r = recs[rIdx];
+        results.push({
+          topic: tp.topic,
+          partition: tp.partition,
+          offset: r.offset,
+          timestamp: r.timestamp,
+          key: r.key,
+          value: r.value,
+          headers: r.headers
+        });
+        c.currentOffsets[key] = r.offset + 1;
+        rIdx += 1;
+      };
+    };
+
+    i += 1;
+  };
+
+  if (c.config.autoCommit && len(results) > 0) {
+    c.CommitSync();
+  };
+
+  return results;
+}
+
+/// Commits the currently fetched offsets to the cluster coordinator
+fn (c: *KafkaConsumer) CommitSync(): Unit => {
+  let mut reqTopics: []OffsetCommitRequestTopic = [];
+  let numAssigned = len(c.assignedPartitions);
+  let mut i = 0;
+
+  while i < numAssigned {
+    let tp = c.assignedPartitions[i];
+    let key = `${tp.topic}:${tp.partition}`;
+    let off = c.currentOffsets[key];
+    if (off != undefined && off != null) {
+      let cPart: OffsetCommitRequestPartition = {
+        partition: tp.partition,
+        committedOffset: off,
+        committedMetadata: "committed-by-aura-consumer"
+      };
+      let cTopic: OffsetCommitRequestTopic = {
+        topic: tp.topic,
+        partitions: [cPart]
+      };
+      reqTopics.push(cTopic);
+    };
+    i += 1;
+  };
+
+  if (len(reqTopics) > 0) {
+    let commitReq: OffsetCommitRequest = {
+      groupId: c.config.groupId,
+      generationId: c.generationId,
+      memberId: c.memberId,
+      topics: reqTopics
+    };
+    c.broker.HandleOffsetCommit(commitReq);
+  };
+}
+
+/// Manually seeks to a given offset on a partition
+fn (c: *KafkaConsumer) Seek(topic: String, partition: Int, offset: Int): Unit => {
+  let key = `${topic}:${partition}`;
+  c.currentOffsets[key] = offset;
+}
+
+/// Retrieves current position/offset for a partition
+fn (c: *KafkaConsumer) Position(topic: String, partition: Int): Int => {
+  let key = `${topic}:${partition}`;
+  let pos = c.currentOffsets[key];
+  if (pos != undefined && pos != null) { return pos; } else { return 0; }
+}
+
+/// Closes the consumer and leaves group
+fn (c: *KafkaConsumer) Close(): Unit => {
+  if (len(c.memberId) > 0) {
+    let leaveReq: LeaveGroupRequest = {
+      groupId: c.config.groupId,
+      memberId: c.memberId
+    };
+    c.broker.HandleLeaveGroup(leaveReq);
+  };
+}

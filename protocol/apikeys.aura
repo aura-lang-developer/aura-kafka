@@ -1,0 +1,102 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// protocol/apikeys.aura - Kafka Protocol API Keys Specification
+// Based on org.apache.kafka.common.protocol.ApiKeys
+// ==============================================================================
+
+export fn ApiKeyProduce(): Int => 0;
+export fn ApiKeyFetch(): Int => 1;
+export fn ApiKeyListOffsets(): Int => 2;
+export fn ApiKeyMetadata(): Int => 3;
+export fn ApiKeyLeaderAndIsr(): Int => 4;
+export fn ApiKeyStopReplica(): Int => 5;
+export fn ApiKeyUpdateMetadata(): Int => 6;
+export fn ApiKeyControlledShutdown(): Int => 7;
+export fn ApiKeyOffsetCommit(): Int => 8;
+export fn ApiKeyOffsetFetch(): Int => 9;
+export fn ApiKeyFindCoordinator(): Int => 10;
+export fn ApiKeyJoinGroup(): Int => 11;
+export fn ApiKeyHeartbeat(): Int => 12;
+export fn ApiKeyLeaveGroup(): Int => 13;
+export fn ApiKeySyncGroup(): Int => 14;
+export fn ApiKeyDescribeGroups(): Int => 15;
+export fn ApiKeyListGroups(): Int => 16;
+export fn ApiKeySaslHandshake(): Int => 17;
+export fn ApiKeyApiVersions(): Int => 18;
+export fn ApiKeyCreateTopics(): Int => 19;
+export fn ApiKeyDeleteTopics(): Int => 20;
+export fn ApiKeyDeleteRecords(): Int => 21;
+export fn ApiKeyInitProducerId(): Int => 22;
+export fn ApiKeyOffsetForLeaderEpoch(): Int => 23;
+export fn ApiKeyAddPartitionsToTxn(): Int => 24;
+export fn ApiKeyAddOffsetsToTxn(): Int => 25;
+export fn ApiKeyEndTxn(): Int => 26;
+export fn ApiKeyWriteTxnMarkers(): Int => 27;
+export fn ApiKeyTxnOffsetCommit(): Int => 28;
+export fn ApiKeyDescribeAcls(): Int => 29;
+export fn ApiKeyCreateAcls(): Int => 30;
+export fn ApiKeyDeleteAcls(): Int => 31;
+export fn ApiKeyDescribeConfigs(): Int => 32;
+export fn ApiKeyAlterConfigs(): Int => 33;
+export fn ApiKeyAlterReplicaLogDirs(): Int => 34;
+export fn ApiKeyDescribeLogDirs(): Int => 35;
+export fn ApiKeySaslAuthenticate(): Int => 36;
+export fn ApiKeyCreatePartitions(): Int => 37;
+export fn ApiKeyDeleteGroups(): Int => 42;
+export fn ApiKeyElectLeaders(): Int => 43;
+export fn ApiKeyIncrementalAlterConfigs(): Int => 44;
+export fn ApiKeyAlterPartitionReassignments(): Int => 45;
+export fn ApiKeyListPartitionReassignments(): Int => 46;
+export fn ApiKeyOffsetDelete(): Int => 47;
+export fn ApiKeyDescribeQuorum(): Int => 55;
+export fn ApiKeyAlterPartition(): Int => 56;
+export fn ApiKeyUpdateFeatures(): Int => 57;
+export fn ApiKeyEnvelope(): Int => 58;
+export fn ApiKeyDescribeCluster(): Int => 60;
+export fn ApiKeyDescribeProducers(): Int => 61;
+export fn ApiKeyUnregisterBroker(): Int => 64;
+export fn ApiKeyDescribeTransactions(): Int => 65;
+export fn ApiKeyListTransactions(): Int => 66;
+export fn ApiKeyAllocateProducerIds(): Int => 67;
+export fn ApiKeyConsumerGroupHeartbeat(): Int => 68;
+export fn ApiKeyConsumerGroupDescribe(): Int => 69;
+
+/// Returns the standard canonical name for a Kafka API key
+export fn ApiKeyName(apiKey: Int): String => {
+  if (apiKey == 0) { "PRODUCE" }
+  else if (apiKey == 1) { "FETCH" }
+  else if (apiKey == 2) { "LIST_OFFSETS" }
+  else if (apiKey == 3) { "METADATA" }
+  else if (apiKey == 4) { "LEADER_AND_ISR" }
+  else if (apiKey == 5) { "STOP_REPLICA" }
+  else if (apiKey == 6) { "UPDATE_METADATA" }
+  else if (apiKey == 7) { "CONTROLLED_SHUTDOWN" }
+  else if (apiKey == 8) { "OFFSET_COMMIT" }
+  else if (apiKey == 9) { "OFFSET_FETCH" }
+  else if (apiKey == 10) { "FIND_COORDINATOR" }
+  else if (apiKey == 11) { "JOIN_GROUP" }
+  else if (apiKey == 12) { "HEARTBEAT" }
+  else if (apiKey == 13) { "LEAVE_GROUP" }
+  else if (apiKey == 14) { "SYNC_GROUP" }
+  else if (apiKey == 15) { "DESCRIBE_GROUPS" }
+  else if (apiKey == 16) { "LIST_GROUPS" }
+  else if (apiKey == 17) { "SASL_HANDSHAKE" }
+  else if (apiKey == 18) { "API_VERSIONS" }
+  else if (apiKey == 19) { "CREATE_TOPICS" }
+  else if (apiKey == 20) { "DELETE_TOPICS" }
+  else if (apiKey == 21) { "DELETE_RECORDS" }
+  else if (apiKey == 22) { "INIT_PRODUCER_ID" }
+  else if (apiKey == 23) { "OFFSET_FOR_LEADER_EPOCH" }
+  else if (apiKey == 28) { "TXN_OFFSET_COMMIT" }
+  else if (apiKey == 32) { "DESCRIBE_CONFIGS" }
+  else if (apiKey == 33) { "ALTER_CONFIGS" }
+  else if (apiKey == 55) { "DESCRIBE_QUORUM" }
+  else if (apiKey == 60) { "DESCRIBE_CLUSTER" }
+  else if (apiKey == 68) { "CONSUMER_GROUP_HEARTBEAT" }
+  else { `UNKNOWN_API_KEY_${apiKey}` }
+}
+
+/// Returns whether this API key is a cluster or controller-only key
+export fn IsClusterKey(apiKey: Int): Bool => {
+  apiKey == 4 || apiKey == 5 || apiKey == 6 || apiKey == 7 || apiKey == 55 || apiKey == 56
+}

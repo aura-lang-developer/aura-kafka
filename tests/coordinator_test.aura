@@ -1,0 +1,110 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// tests/coordinator_test.aura - Unit Tests for Consumer Groups & KRaft Mode
+// ==============================================================================
+
+import {
+  ConsumerGroup,
+  GroupMember,
+  NewConsumerGroup,
+  NewGroupMember,
+  GroupStateStable,
+  GroupStateEmpty
+} from "../coordinator/group";
+
+import {
+  GroupCoordinator,
+  NewGroupCoordinator,
+  OffsetAndMetadata,
+  NewOffsetAndMetadata
+} from "../coordinator/coordinator";
+
+import {
+  KRaftController,
+  NewKRaftController
+} from "../coordinator/kraft";
+
+export fn main(): Unit => {
+  let mut passed = 0;
+  let mut failed = 0;
+
+  println("================================================================================");
+  println("  🧪 AURAKAFKA - COORDINATOR & KRAFT UNIT TESTS");
+  println("================================================================================");
+
+  // Test 1: Consumer Group Membership & Lifecycle
+  println("\n[TEST 1] Consumer Group Member Management");
+  let mut group = NewConsumerGroup("analytics-group", "consumer");
+  let m1 = NewGroupMember("consumer-1", "client-app-1", "127.0.0.1", ["range"]);
+  let m2 = NewGroupMember("consumer-2", "client-app-2", "127.0.0.1", ["range"]);
+
+  group.AddMember(m1);
+  group.AddMember(m2);
+
+  if (group.NumMembers() == 2 && group.leaderId == "consumer-1" && group.state == GroupStateStable()) {
+    println("  ✓ PASS: Successfully added 2 members, elected leader 'consumer-1'");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: Consumer group member state error");
+    failed += 1;
+  };
+
+  group.RemoveMember("consumer-1");
+  if (group.NumMembers() == 1 && group.leaderId == "consumer-2") {
+    println("  ✓ PASS: Removed leader 'consumer-1', leadership transferred to 'consumer-2'");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: Consumer group leadership transfer error");
+    failed += 1;
+  };
+
+  // Test 2: GroupCoordinator Commit & Fetch Offsets
+  println("\n[TEST 2] GroupCoordinator Offset Commit & Fetch");
+  let mut gc = NewGroupCoordinator();
+  gc.CommitOffset("analytics-group", "clicks", 0, 150, "test-metadata");
+  let fetched = gc.FetchOffset("analytics-group", "clicks", 0);
+
+  if (fetched.offset == 150 && fetched.metadata == "test-metadata") {
+    println("  ✓ PASS: Offset 150 committed and fetched accurately");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: Offset fetch mismatch");
+    failed += 1;
+  };
+
+  let uncommitted = gc.FetchOffset("analytics-group", "unknown-topic", 0);
+  if (uncommitted.offset == -1) {
+    println("  ✓ PASS: Uncommitted topic returns offset -1");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: Uncommitted topic offset check failed");
+    failed += 1;
+  };
+
+  // Test 3: KRaft Quorum Controller Operations
+  println("\n[TEST 3] KRaft Quorum Controller & Leader Election");
+  let mut kraft = NewKRaftController("aura-cluster-01", 1);
+  kraft.RegisterBroker(2);
+  kraft.RegisterBroker(3);
+
+  if (kraft.NumBrokers() == 3 && kraft.IsLeader(1) && kraft.leaderEpoch == 1) {
+    println("  ✓ PASS: Registered 3 brokers, Broker 1 is active KRaft leader");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: KRaft broker registration check failed");
+    failed += 1;
+  };
+
+  kraft.ElectLeader(2);
+  if (kraft.IsLeader(2) && !kraft.IsLeader(1) && kraft.leaderEpoch == 2) {
+    println("  ✓ PASS: Successfully elected Broker 2 as leader, leaderEpoch incremented to 2");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: KRaft leader election failed");
+    failed += 1;
+  };
+
+  println("--------------------------------------------------------------------------------");
+  println(`  📊 RESULTS: ${passed} PASSED | ${failed} FAILED`);
+  println("================================================================================");
+}

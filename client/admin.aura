@@ -1,0 +1,152 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// client/admin.aura - Kafka Admin Client API
+// Based on org.apache.kafka.clients.admin.AdminClient
+// ==============================================================================
+
+import {
+  CreateTopicsRequest,
+  CreateTopicsRequestTopic,
+  DeleteTopicsRequest,
+  MetadataRequest
+} from "../protocol/messages";
+import { KafkaBroker } from "../server/broker";
+
+/// Specifications for creating a new Kafka topic
+export struct NewTopic {
+  name: String,
+  numPartitions: Int,
+  replicationFactor: Int
+};
+
+export fn MakeNewTopic(name: String, numPartitions: Int, replicationFactor: Int): NewTopic => {
+  return {
+    name: name,
+    numPartitions: numPartitions,
+    replicationFactor: replicationFactor
+  };
+}
+
+/// Partition description within topic metadata
+export struct PartitionMetadata {
+  partition: Int,
+  leader: Int,
+  replicas: []Int,
+  isr: []Int
+};
+
+/// Full topic description
+export struct TopicDescription {
+  name: String,
+  isInternal: Bool,
+  partitions: []PartitionMetadata
+};
+
+/// Administrative client for managing topics, brokers, and cluster metadata
+export struct AdminClient {
+  broker: KafkaBroker
+};
+
+export fn NewAdminClient(broker: KafkaBroker): AdminClient => {
+  return { broker: broker };
+}
+
+/// Creates new topics in the cluster
+fn (admin: *AdminClient) CreateTopics(topics: []NewTopic): Result<Bool, String> => {
+  let mut reqTopics: []CreateTopicsRequestTopic = [];
+  let mut i = 0;
+  while i < len(topics) {
+    let t = topics[i];
+    reqTopics.push({
+      name: t.name,
+      numPartitions: t.numPartitions,
+      replicationFactor: t.replicationFactor
+    });
+    i += 1;
+  };
+
+  let req: CreateTopicsRequest = {
+    topics: reqTopics,
+    timeoutMs: 30000
+  };
+
+  let resp = admin.broker.HandleCreateTopics(req);
+  let mut j = 0;
+  while j < len(resp.topics) {
+    let tResp = resp.topics[j];
+    if (tResp.errorCode != 0) {
+      return Err(`Failed to create topic '${tResp.name}': ${tResp.errorMessage}`);
+    };
+    j += 1;
+  };
+
+  return Ok(true);
+}
+
+/// Lists all existing topic names in the cluster
+fn (admin: *AdminClient) ListTopics(): []String => {
+  return admin.broker.logManager.AllTopics();
+}
+
+/// Describes metadata and partitions for given topic names
+fn (admin: *AdminClient) DescribeTopics(topicNames: []String): []TopicDescription => {
+  let req: MetadataRequest = {
+    topics: topicNames,
+    allowAutoTopicCreation: false
+  };
+
+  let resp = admin.broker.HandleMetadata(req);
+  let mut descriptions: []TopicDescription = [];
+  let mut tIdx = 0;
+
+  while tIdx < len(resp.topics) {
+    let t = resp.topics[tIdx];
+    let mut parts: []PartitionMetadata = [];
+    let mut pIdx = 0;
+
+    while pIdx < len(t.partitions) {
+      let p = t.partitions[pIdx];
+      parts.push({
+        partition: p.partitionIndex,
+        leader: p.leaderId,
+        replicas: p.replicaNodes,
+        isr: p.isrNodes
+      });
+      pIdx += 1;
+    };
+
+    descriptions.push({
+      name: t.name,
+      isInternal: t.isInternal,
+      partitions: parts
+    });
+    tIdx += 1;
+  };
+
+  return descriptions;
+}
+
+/// Deletes topics by name
+fn (admin: *AdminClient) DeleteTopics(topicNames: []String): Result<Bool, String> => {
+  let req: DeleteTopicsRequest = {
+    topicNames: topicNames,
+    timeoutMs: 30000
+  };
+
+  let resp = admin.broker.HandleDeleteTopics(req);
+  let mut i = 0;
+  while i < len(resp.topics) {
+    let tResp = resp.topics[i];
+    if (tResp.errorCode != 0) {
+      return Err(`Failed to delete topic '${tResp.name}' with error code ${tResp.errorCode}`);
+    };
+    i += 1;
+  };
+
+  return Ok(true);
+}
+
+/// Returns a string describing cluster state
+fn (admin: *AdminClient) DescribeCluster(): String => {
+  return `Cluster ID: ${admin.broker.kraft.clusterId} | Active Controller: Broker-${admin.broker.kraft.leaderBrokerId} | Registered Brokers: ${admin.broker.kraft.NumBrokers()}`;
+}

@@ -1,0 +1,96 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// protocol/errors.aura - Kafka Protocol Error Codes & Handlers
+// Based on org.apache.kafka.common.protocol.Errors
+// ==============================================================================
+
+export fn ErrNone(): Int => 0;
+export fn ErrOffsetOutOfRange(): Int => 1;
+export fn ErrCorruptMessage(): Int => 2;
+export fn ErrUnknownTopicOrPartition(): Int => 3;
+export fn ErrInvalidFetchSize(): Int => 4;
+export fn ErrLeaderNotAvailable(): Int => 5;
+export fn ErrNotLeaderOrFollower(): Int => 6;
+export fn ErrRequestTimedOut(): Int => 7;
+export fn ErrBrokerNotAvailable(): Int => 8;
+export fn ErrReplicaNotAvailable(): Int => 9;
+export fn ErrMessageTooLarge(): Int => 10;
+export fn ErrStaleControllerEpoch(): Int => 11;
+export fn ErrOffsetMetadataTooLarge(): Int => 12;
+export fn ErrNetworkException(): Int => 13;
+export fn ErrCoordinatorLoadInProgress(): Int => 14;
+export fn ErrCoordinatorNotAvailable(): Int => 15;
+export fn ErrNotCoordinator(): Int => 16;
+export fn ErrInvalidTopicException(): Int => 17;
+export fn ErrRecordListTooLarge(): Int => 18;
+export fn ErrNotEnoughReplicas(): Int => 19;
+export fn ErrNotEnoughReplicasAfterAppend(): Int => 20;
+export fn ErrInvalidRequiredAcks(): Int => 21;
+export fn ErrIllegalGeneration(): Int => 22;
+export fn ErrInconsistentGroupProtocol(): Int => 23;
+export fn ErrInvalidGroupId(): Int => 24;
+export fn ErrUnknownMemberId(): Int => 25;
+export fn ErrInvalidSessionTimeout(): Int => 26;
+export fn ErrRebalanceInProgress(): Int => 27;
+export fn ErrInvalidCommitOffsetSize(): Int => 28;
+export fn ErrTopicAuthorizationFailed(): Int => 29;
+export fn ErrGroupAuthorizationFailed(): Int => 30;
+export fn ErrClusterAuthorizationFailed(): Int => 31;
+export fn ErrTopicAlreadyExists(): Int => 36;
+export fn ErrInvalidPartitions(): Int => 37;
+export fn ErrGroupIdNotFound(): Int => 69;
+export fn ErrFencedLeaderEpoch(): Int => 73;
+export fn ErrUnknownLeaderEpoch(): Int => 74;
+
+export struct KafkaError {
+  code: Int,
+  message: String,
+  retriable: Bool
+};
+
+export fn NewKafkaError(code: Int): KafkaError => {
+  {
+    code: code,
+    message: ErrorMessage(code),
+    retriable: IsRetriable(code)
+  }
+}
+
+export fn ErrorMessage(code: Int): String => {
+  if (code == 0) { "NONE" }
+  else if (code == 1) { "The requested offset is not within the range of offsets maintained by the server." }
+  else if (code == 2) { "This message has failed its CRC checksum, exceeds the valid size, has a null key for a compacted topic, etc." }
+  else if (code == 3) { "This server does not host this topic-partition." }
+  else if (code == 4) { "The requested fetch size is invalid." }
+  else if (code == 5) { "There is no leader for this topic-partition as we are in the middle of a leadership election." }
+  else if (code == 6) { "For requests intended only for the leader, this broker is not the current leader." }
+  else if (code == 7) { "The request evaluated by the server timed out." }
+  else if (code == 8) { "The broker you are trying to reach is not available." }
+  else if (code == 9) { "Specified replica is not available for given topic-partition." }
+  else if (code == 10) { "The server has a configurable maximum message size to avoid running out of memory. Message exceeded this limit." }
+  else if (code == 11) { "The controller epoch requested is stale." }
+  else if (code == 12) { "The metadata field of the offset commit request was too large." }
+  else if (code == 13) { "The server disconnected before a response was received." }
+  else if (code == 14) { "The coordinator is loading and not yet ready for group metadata queries." }
+  else if (code == 15) { "The coordinator is not available, yet." }
+  else if (code == 16) { "This is not the correct coordinator." }
+  else if (code == 17) { "The request attempted to perform an operation on an invalid topic name." }
+  else if (code == 18) { "The number of records sent is too large." }
+  else if (code == 19) { "Messages are rejected since there are fewer in-sync replicas than required." }
+  else if (code == 20) { "Messages are written to the log, but to fewer in-sync replicas than required." }
+  else if (code == 21) { "Produce request specified an invalid value for required acks." }
+  else if (code == 22) { "Specified generation id is not valid for this member." }
+  else if (code == 23) { "The group member's supported protocols are incompatible with existing members." }
+  else if (code == 24) { "The configured groupId is invalid." }
+  else if (code == 25) { "The memberId is unknown to the group." }
+  else if (code == 26) { "The session timeout is not within the allowed range." }
+  else if (code == 27) { "A rebalance is in progress. Consumer should rejoin." }
+  else if (code == 36) { "Topic with this name already exists." }
+  else if (code == 37) { "Number of partitions is invalid." }
+  else if (code == 69) { "The specified group ID was not found." }
+  else { `Unknown error code (${code})` }
+}
+
+export fn IsRetriable(code: Int): Bool => {
+  code == 5 || code == 6 || code == 7 || code == 13 || code == 14 || code == 15 || code == 16 || code == 19 || code == 20 || code == 27
+}

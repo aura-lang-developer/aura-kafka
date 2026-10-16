@@ -1,0 +1,33 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// tools/server_main.aura - kafka-server-start Daemon
+// Based on bin/kafka-server-start.sh
+// ==============================================================================
+
+import { KafkaBroker, NewDefaultBroker } from "../server/broker";
+import { PrintBanner } from "../kafka";
+
+export fn main(): Unit => {
+  PrintBanner();
+  println("🚀  AuraKafka Broker Server Daemon (KRaft Mode)");
+  println("--------------------------------------------------");
+
+  let mut broker = NewDefaultBroker(1, 9092);
+  broker.Startup();
+
+  println("\n[SERVER] Broker active and ready for client connections.");
+  println("  • KRaft Quorum Controller: Enabled");
+  println("  • HighWatermark Manager: Active");
+  println("  • Group Coordinator: Active");
+  println("  • Storage Engine: Active");
+
+  // In simulated daemon mode, perform health check and gracefully stop
+  println("\n[SERVER] Executing health check...");
+  let isRunning = broker.isRunning;
+  if (isRunning) {
+    println("  ✓ Broker status: HEALTHY (Cluster Quorum Ready)");
+  };
+
+  broker.Shutdown();
+  println("✓ Server stopped.");
+}

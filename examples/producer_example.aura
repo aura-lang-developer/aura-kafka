@@ -1,0 +1,45 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// examples/producer_example.aura - Producer Usage Demonstration
+// ==============================================================================
+
+import { KafkaBroker, NewDefaultBroker } from "../server/broker";
+import { KafkaProducer, NewKafkaProducer, NewProducerRecord } from "../client/producer";
+import { NewDefaultProducerConfig } from "../client/config";
+import { PrintBanner } from "../kafka";
+
+export fn main(): Unit => {
+  PrintBanner();
+  println("📖 Example 1: Producing Records to AuraKafka");
+  println("--------------------------------------------------");
+
+  let mut broker = NewDefaultBroker(1, 9092);
+  broker.Startup();
+
+  let pCfg = NewDefaultProducerConfig();
+  let mut producer = NewKafkaProducer(pCfg, broker);
+
+  let topic = "sensor-telemetry";
+  println(`Publishing 5 telemetry events to topic '${topic}'...`);
+
+  let mut i = 1;
+  while i <= 5 {
+    let key = `device-${i}`;
+    let val = `{\"deviceId\":\"${key}\",\"temperature\":${20 + i},\"unit\":\"celsius\"}`;
+    let rec = NewProducerRecord(topic, key, val);
+    let res = producer.Send(rec);
+
+    match res {
+      Ok(meta) => {
+        println(`  [Sent] Topic: ${meta.topic} | Partition: ${meta.partition} | Offset: ${meta.offset}`);
+      },
+      Err(err) => {
+        println(`  [Error] Failed to send: ${err}`);
+      }
+    };
+    i += 1;
+  };
+
+  broker.Shutdown();
+  println("\n✓ Producer example finished.");
+}

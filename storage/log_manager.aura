@@ -1,0 +1,146 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// storage/log_manager.aura - Kafka Log Manager Engine
+// Based on org.apache.kafka.storage.internals.log.LogManager
+// ==============================================================================
+
+import { PartitionLog, NewPartitionLog } from "./partition_log";
+
+/// Manages topic creation, partition logs, and lifecycle
+export struct LogManager {
+  partitions: Any,
+  topicNames: []String,
+  topicPartitionCounts: Any,
+  defaultPartitions: Int,
+  defaultSegmentBytes: Int
+};
+
+/// Creates a new LogManager
+export fn NewLogManager(defaultPartitions: Int, defaultSegmentBytes: Int): LogManager => {
+  let pMap: Any = {};
+  let countMap: Any = {};
+  let emptyTopics: []String = [];
+
+  return {
+    partitions: pMap,
+    topicNames: emptyTopics,
+    topicPartitionCounts: countMap,
+    defaultPartitions: defaultPartitions,
+    defaultSegmentBytes: defaultSegmentBytes
+  };
+}
+
+/// Checks whether a topic exists in the manager
+fn (lm: *LogManager) HasTopic(topic: String): Bool => {
+  let mut i = 0;
+  while i < len(lm.topicNames) {
+    if (lm.topicNames[i] == topic) {
+      return true;
+    };
+    i += 1;
+  };
+  false
+}
+
+/// Creates a new topic with the specified partition count
+fn (lm: *LogManager) CreateTopic(topic: String, numPartitions: Int): Result<Bool, String> => {
+  if (len(topic) == 0) {
+    return Err("Topic name cannot be empty");
+  };
+  if (lm.HasTopic(topic)) {
+    return Err(`Topic '${topic}' already exists`);
+  };
+  if (numPartitions <= 0) {
+    return Err("Number of partitions must be greater than 0");
+  };
+
+  lm.topicNames.push(topic);
+  lm.topicPartitionCounts[topic] = numPartitions;
+
+  let mut p = 0;
+  while p < numPartitions {
+    let key = `${topic}-${p}`;
+    let plog = NewPartitionLog(topic, p, lm.defaultSegmentBytes);
+    lm.partitions[key] = plog;
+    p += 1;
+  };
+
+  Ok(true)
+}
+
+/// Returns the number of partitions for a topic
+fn (lm: *LogManager) GetNumPartitions(topic: String): Int => {
+  if (!lm.HasTopic(topic)) {
+    return 0;
+  };
+  let count = lm.topicPartitionCounts[topic];
+  if (count) { return count; } else { return 0; }
+}
+
+/// Retrieves or automatically creates a PartitionLog for a given topic and partition
+fn (lm: *LogManager) GetOrCreatePartitionLog(topic: String, partitionId: Int): PartitionLog => {
+  let key = `${topic}-${partitionId}`;
+  let existing = lm.partitions[key];
+  if (existing) {
+    return existing;
+  };
+
+  if (!lm.HasTopic(topic)) {
+    lm.topicNames.push(topic);
+    let parts = if (partitionId + 1 > lm.defaultPartitions) { partitionId + 1 } else { lm.defaultPartitions };
+    lm.topicPartitionCounts[topic] = parts;
+  };
+
+  let newPlog = NewPartitionLog(topic, partitionId, lm.defaultSegmentBytes);
+  lm.partitions[key] = newPlog;
+  return newPlog;
+}
+
+/// Retrieves a PartitionLog if present
+fn (lm: *LogManager) GetPartitionLog(topic: String, partitionId: Int): Result<PartitionLog, String> => {
+  let key = `${topic}-${partitionId}`;
+  let existing = lm.partitions[key];
+  if (existing) {
+    return Ok(existing);
+  };
+  return Err(`Unknown topic or partition: ${topic}-${partitionId}`);
+}
+
+/// Stores or updates an existing PartitionLog
+fn (lm: *LogManager) SetPartitionLog(topic: String, partitionId: Int, plog: PartitionLog): Unit => {
+  let key = `${topic}-${partitionId}`;
+  lm.partitions[key] = plog;
+}
+
+/// Lists all managed topic names
+fn (lm: *LogManager) AllTopics(): []String => {
+  return lm.topicNames;
+}
+
+/// Deletes a topic and all its partition logs
+fn (lm: *LogManager) DeleteTopic(topic: String): Bool => {
+  if (!lm.HasTopic(topic)) {
+    return false;
+  };
+
+  let numParts = lm.GetNumPartitions(topic);
+  let mut p = 0;
+  while p < numParts {
+    let key = `${topic}-${p}`;
+    lm.partitions[key] = null;
+    p += 1;
+  };
+
+  let mut newNames: []String = [];
+  let mut i = 0;
+  while i < len(lm.topicNames) {
+    if (lm.topicNames[i] != topic) {
+      newNames.push(lm.topicNames[i]);
+    };
+    i += 1;
+  };
+  lm.topicNames = newNames;
+  lm.topicPartitionCounts[topic] = null;
+
+  true
+}

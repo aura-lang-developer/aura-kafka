@@ -1,0 +1,48 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// examples/consumer_example.aura - Consumer Usage Demonstration
+// ==============================================================================
+
+import { KafkaBroker, NewDefaultBroker } from "../server/broker";
+import { KafkaProducer, NewKafkaProducer, NewProducerRecord } from "../client/producer";
+import { KafkaConsumer, NewKafkaConsumer } from "../client/consumer";
+import { NewDefaultProducerConfig, NewDefaultConsumerConfig } from "../client/config";
+import { PrintBanner } from "../kafka";
+
+export fn main(): Unit => {
+  PrintBanner();
+  println("📖 Example 2: Consumer Groups & Offsets in AuraKafka");
+  println("--------------------------------------------------");
+
+  let mut broker = NewDefaultBroker(1, 9092);
+  broker.Startup();
+
+  // 1. Produce sample notifications
+  let pCfg = NewDefaultProducerConfig();
+  let mut producer = NewKafkaProducer(pCfg, broker);
+  let topic = "user-notifications";
+
+  producer.Send(NewProducerRecord(topic, "user-1", "Welcome to AuraKafka!"));
+  producer.Send(NewProducerRecord(topic, "user-2", "Your account statement is ready."));
+
+  // 2. Consume with group coordinator
+  let mut cCfg = NewDefaultConsumerConfig("notifications-worker-group");
+  cCfg.autoOffsetReset = "earliest";
+  let mut consumer = NewKafkaConsumer(cCfg, broker);
+
+  consumer.Subscribe([topic]);
+  let records = consumer.Poll(1000);
+
+  println(`Received ${len(records)} notifications:`);
+  let mut i = 0;
+  while i < len(records) {
+    let r = records[i];
+    println(`  [Notification] Offset: ${r.offset} | Key: ${r.key} | Value: ${r.value}`);
+    i += 1;
+  };
+
+  consumer.CommitSync();
+  consumer.Close();
+  broker.Shutdown();
+  println("\n✓ Consumer example finished.");
+}

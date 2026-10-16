@@ -1,0 +1,52 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// tools/console_producer.aura - kafka-console-producer CLI Tool
+// Based on bin/kafka-console-producer.sh
+// ==============================================================================
+
+import { KafkaBroker, NewDefaultBroker } from "../server/broker";
+import { KafkaProducer, NewKafkaProducer, NewProducerRecord } from "../client/producer";
+import { NewDefaultProducerConfig } from "../client/config";
+import { PrintBanner } from "../kafka";
+
+export fn main(): Unit => {
+  PrintBanner();
+  println("📤  AuraKafka Console Producer (kafka-console-producer)");
+  println("--------------------------------------------------");
+
+  let mut broker = NewDefaultBroker(1, 9092);
+  broker.Startup();
+
+  let pCfg = NewDefaultProducerConfig();
+  let mut producer = NewKafkaProducer(pCfg, broker);
+
+  println("\n[PRODUCE] Publishing messages to topic 'quickstart-events'...");
+
+  let messages = [
+    { key: "user-101", value: "{\"event\":\"login\",\"timestamp\":1710000000}" },
+    { key: "user-102", value: "{\"event\":\"page_view\",\"page\":\"/home\"}" },
+    { key: "user-101", value: "{\"event\":\"purchase\",\"amount\":49.99}" },
+    { key: "user-103", value: "{\"event\":\"logout\",\"session\":\"sess-987\"}" }
+  ];
+
+  let mut i = 0;
+  while i < len(messages) {
+    let m = messages[i];
+    let record = NewProducerRecord("quickstart-events", m.key, m.value);
+    let sendRes = producer.Send(record);
+    match sendRes {
+      Ok(meta) => {
+        println(`  ✓ Produced to ${meta.topic} [partition ${meta.partition}] at offset ${meta.offset} (Key: ${m.key})`);
+      },
+      Err(e) => {
+        println(`  ✕ Failed to produce message: ${e}`);
+      }
+    };
+    i += 1;
+  };
+
+  producer.Flush();
+  producer.Close();
+  broker.Shutdown();
+  println("\n✓ Console producer finished publishing.");
+}

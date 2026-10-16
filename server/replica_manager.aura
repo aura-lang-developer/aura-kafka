@@ -1,0 +1,87 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// server/replica_manager.aura - Replica Manager & ISR State Engine
+// Based on kafka.server.ReplicaManager
+// ==============================================================================
+
+export struct PartitionReplicaInfo {
+  topic: String,
+  partition: Int,
+  leaderId: Int,
+  leaderEpoch: Int,
+  replicas: []Int,
+  isr: []Int
+};
+
+export fn NewPartitionReplicaInfo(topic: String, partition: Int, leaderId: Int, replicas: []Int): PartitionReplicaInfo => {
+  return {
+    topic: topic,
+    partition: partition,
+    leaderId: leaderId,
+    leaderEpoch: 1,
+    replicas: replicas,
+    isr: replicas
+  };
+}
+
+export struct ReplicaManager {
+  localBrokerId: Int,
+  partitionReplicas: Any
+};
+
+export fn NewReplicaManager(localBrokerId: Int): ReplicaManager => {
+  let repMap: Any = {};
+  return {
+    localBrokerId: localBrokerId,
+    partitionReplicas: repMap
+  };
+}
+
+/// Registers or initializes partition replica info
+fn (rm: *ReplicaManager) InitPartition(topic: String, partition: Int, replicas: []Int, leader: Int): Unit => {
+  let key = `${topic}:${partition}`;
+  let info = NewPartitionReplicaInfo(topic, partition, leader, replicas);
+  rm.partitionReplicas[key] = info;
+}
+
+/// Checks whether the local broker is the leader for given topic-partition
+fn (rm: *ReplicaManager) IsLeader(topic: String, partition: Int): Bool => {
+  let key = `${topic}:${partition}`;
+  let info: Any = rm.partitionReplicas[key];
+  if (!info) {
+    return true; // default leader if single broker
+  };
+  return info.leaderId == rm.localBrokerId;
+}
+
+/// Gets the leader broker ID for a partition
+fn (rm: *ReplicaManager) GetLeader(topic: String, partition: Int): Int => {
+  let key = `${topic}:${partition}`;
+  let info: Any = rm.partitionReplicas[key];
+  if (!info) {
+    return rm.localBrokerId;
+  };
+  return info.leaderId;
+}
+
+/// Returns the In-Sync Replicas list for a partition
+fn (rm: *ReplicaManager) GetISR(topic: String, partition: Int): []Int => {
+  let key = `${topic}:${partition}`;
+  let info: Any = rm.partitionReplicas[key];
+  if (!info) {
+    let single: []Int = [rm.localBrokerId];
+    return single;
+  };
+  return info.isr;
+}
+
+/// Returns all replicas for a partition
+fn (rm: *ReplicaManager) GetReplicas(topic: String, partition: Int): []Int => {
+  let key = `${topic}:${partition}`;
+  let info: Any = rm.partitionReplicas[key];
+  if (!info) {
+    let single: []Int = [rm.localBrokerId];
+    return single;
+  };
+  return info.replicas;
+}

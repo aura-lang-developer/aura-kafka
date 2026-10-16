@@ -1,0 +1,98 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// storage/record.aura - Kafka Record, Header & RecordBatch Representation
+// Based on org.apache.kafka.common.record.Record & RecordBatch
+// ==============================================================================
+
+/// Key-value header attached to a Kafka record
+export struct Header {
+  key: String,
+  value: String
+};
+
+export fn NewHeader(key: String, value: String): Header => {
+  { key: key, value: value }
+}
+
+/// An individual Kafka record stored in partition log
+export struct Record {
+  offset: Int,
+  timestamp: Int,
+  key: String,
+  value: String,
+  headers: []Header
+};
+
+/// Creates a new Record with key and value
+export fn NewRecord(key: String, value: String): Record => {
+  let emptyHeaders: []Header = [];
+  return {
+    offset: -1,
+    timestamp: 0,
+    key: key,
+    value: value,
+    headers: emptyHeaders
+  };
+}
+
+/// Creates a new Record with key, value, and custom headers
+export fn NewRecordWithHeaders(key: String, value: String, headers: []Header): Record => {
+  return {
+    offset: -1,
+    timestamp: 0,
+    key: key,
+    value: value,
+    headers: headers
+  };
+}
+
+/// Creates a new Record with offset, timestamp, key, value, and headers
+export fn NewFullRecord(offset: Int, timestamp: Int, key: String, value: String, headers: []Header): Record => {
+  return {
+    offset: offset,
+    timestamp: timestamp,
+    key: key,
+    value: value,
+    headers: headers
+  };
+}
+
+/// Computes estimated size in bytes of a Record
+export fn RecordSize(r: Record): Int => {
+  let mut s = len(r.key) + len(r.value) + 16;
+  let mut i = 0;
+  while i < len(r.headers) {
+    let h = r.headers[i];
+    s += len(h.key) + len(h.value) + 4;
+    i += 1;
+  };
+  s
+}
+
+/// A batch of sequential Kafka records
+export struct RecordBatch {
+  baseOffset: Int,
+  lastOffsetDelta: Int,
+  maxTimestamp: Int,
+  producerId: Int,
+  producerEpoch: Int,
+  isTransactional: Bool,
+  records: []Record
+};
+
+/// Creates a new RecordBatch with specified records
+export fn NewRecordBatch(baseOffset: Int, records: []Record): RecordBatch => {
+  let count = len(records);
+  let lastDelta = if (count > 0) { count - 1 } else { 0 };
+  let maxTs = if (count > 0) { records[count - 1].timestamp } else { 0 };
+
+  return {
+    baseOffset: baseOffset,
+    lastOffsetDelta: lastDelta,
+    maxTimestamp: maxTs,
+    producerId: -1,
+    producerEpoch: -1,
+    isTransactional: false,
+    records: records
+  };
+}

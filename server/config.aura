@@ -1,0 +1,29 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// server/config.aura - Kafka Server / Broker Configuration
+// Based on kafka.server.KafkaConfig
+// ==============================================================================
+
+export struct KafkaServerConfig {
+  brokerId: Int,
+  host: String,
+  port: Int,
+  logDir: String,
+  numPartitions: Int,
+  defaultReplicationFactor: Int,
+  autoCreateTopicsEnable: Bool,
+  segmentMaxBytes: Int
+};
+
+export fn NewDefaultServerConfig(brokerId: Int, port: Int): KafkaServerConfig => {
+  return {
+    brokerId: brokerId,
+    host: "localhost",
+    port: port,
+    logDir: `/tmp/aura-kafka-logs-${brokerId}`,
+    numPartitions: 3,
+    defaultReplicationFactor: 1,
+    autoCreateTopicsEnable: true,
+    segmentMaxBytes: 10485760 // 10MB
+  };
+}

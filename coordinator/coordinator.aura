@@ -1,0 +1,210 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// coordinator/coordinator.aura - Kafka Group Coordinator & Offset Management
+// Based on org.apache.kafka.coordinator.group.GroupCoordinator
+// ==============================================================================
+
+import {
+  ConsumerGroup,
+  GroupMember,
+  NewConsumerGroup,
+  NewGroupMember,
+  GroupStateStable
+} from "./group";
+
+import {
+  ErrNone,
+  ErrUnknownMemberId,
+  ErrIllegalGeneration,
+  ErrGroupIdNotFound
+} from "../protocol/errors";
+
+/// Stored offset metadata committed by consumers
+export struct OffsetAndMetadata {
+  offset: Int,
+  leaderEpoch: Int,
+  metadata: String,
+  commitTimestamp: Int
+};
+
+export fn NewOffsetAndMetadata(offset: Int, metadata: String): OffsetAndMetadata => {
+  return {
+    offset: offset,
+    leaderEpoch: 0,
+    metadata: metadata,
+    commitTimestamp: 1672531199000
+  };
+}
+
+/// Result from JoinGroup execution
+export struct JoinGroupResult {
+  errorCode: Int,
+  generationId: Int,
+  protocolName: String,
+  leaderId: String,
+  memberId: String,
+  members: []String
+};
+
+/// Result from SyncGroup execution
+export struct SyncGroupResult {
+  errorCode: Int,
+  assignment: String
+};
+
+/// Central coordinator managing active consumer groups and committed partition offsets
+export struct GroupCoordinator {
+  groups: Any,
+  groupIds: []String,
+  offsets: Any,
+  memberAssignments: Any
+};
+
+export fn NewGroupCoordinator(): GroupCoordinator => {
+  let gMap: Any = {};
+  let gIds: []String = [];
+  let offMap: Any = {};
+  let assignMap: Any = {};
+
+  return {
+    groups: gMap,
+    groupIds: gIds,
+    offsets: offMap,
+    memberAssignments: assignMap
+  };
+}
+
+/// Checks if group exists
+fn (gc: *GroupCoordinator) HasGroup(groupId: String): Bool => {
+  let g = gc.groups[groupId];
+  if (g) { true } else { false }
+}
+
+/// Retrieves or creates a new ConsumerGroup
+fn (gc: *GroupCoordinator) GetOrCreateGroup(groupId: String): ConsumerGroup => {
+  let existing = gc.groups[groupId];
+  if (existing) {
+    return existing;
+  };
+
+  let newG = NewConsumerGroup(groupId, "consumer");
+  gc.groups[groupId] = newG;
+  gc.groupIds.push(groupId);
+  return newG;
+}
+
+/// Handles a member joining the consumer group
+fn (gc: *GroupCoordinator) OnJoinGroup(groupId: String, memberId: String, clientId: String, protocols: []String): JoinGroupResult => {
+  let existing: Any = gc.groups[groupId];
+  let mut group: Any = if (existing) {
+    existing
+  } else {
+    let newG = NewConsumerGroup(groupId, "consumer");
+    gc.groups[groupId] = newG;
+    gc.groupIds.push(groupId);
+    newG
+  };
+
+  let actualMemberId = if (len(memberId) == 0) {
+    `${clientId}-${group.NumMembers() + 1}`
+  } else {
+    memberId
+  };
+
+  let member = NewGroupMember(actualMemberId, clientId, "127.0.0.1", protocols);
+  group.AddMember(member);
+  group.generationId += 1;
+  gc.groups[groupId] = group;
+
+  let protocolChoice = if (len(protocols) > 0) { protocols[0] } else { "range" };
+
+  return {
+    errorCode: ErrNone(),
+    generationId: group.generationId,
+    protocolName: protocolChoice,
+    leaderId: group.leaderId,
+    memberId: actualMemberId,
+    members: group.GetMemberIds()
+  };
+}
+
+/// Handles assignment synchronization for group members
+fn (gc: *GroupCoordinator) OnSyncGroup(groupId: String, generationId: Int, memberId: String, assignment: String): SyncGroupResult => {
+  let group: Any = gc.groups[groupId];
+  if (!group) {
+    return { errorCode: ErrGroupIdNotFound(), assignment: "" };
+  };
+
+  if (!group.HasMember(memberId)) {
+    return { errorCode: ErrUnknownMemberId(), assignment: "" };
+  };
+
+  let assignKey = `${groupId}:${memberId}`;
+  if (len(assignment) > 0) {
+    gc.memberAssignments[assignKey] = assignment;
+  };
+
+  let storedAssign = gc.memberAssignments[assignKey];
+  let resAssign = if (storedAssign != undefined && storedAssign != null) { storedAssign } else { assignment };
+
+  return {
+    errorCode: ErrNone(),
+    assignment: resAssign
+  };
+}
+
+/// Handles member heartbeats to keep consumer alive
+fn (gc: *GroupCoordinator) OnHeartbeat(groupId: String, generationId: Int, memberId: String): Int => {
+  let group: Any = gc.groups[groupId];
+  if (!group) {
+    return ErrGroupIdNotFound();
+  };
+
+  if (!group.HasMember(memberId)) {
+    return ErrUnknownMemberId();
+  };
+
+  return ErrNone();
+}
+
+/// Handles a member leaving the group
+fn (gc: *GroupCoordinator) OnLeaveGroup(groupId: String, memberId: String): Int => {
+  let mut group: Any = gc.groups[groupId];
+  if (!group) {
+    return ErrGroupIdNotFound();
+  };
+
+  let removed = group.RemoveMember(memberId);
+  gc.groups[groupId] = group;
+
+  if (removed) {
+    let assignKey = `${groupId}:${memberId}`;
+    gc.memberAssignments[assignKey] = null;
+    return ErrNone();
+  } else {
+    return ErrUnknownMemberId();
+  }
+}
+
+/// Commits an offset for a consumer group on a specific topic-partition
+fn (gc: *GroupCoordinator) CommitOffset(groupId: String, topic: String, partition: Int, offset: Int, metadata: String): Int => {
+  let key = `${groupId}:${topic}:${partition}`;
+  let record = NewOffsetAndMetadata(offset, metadata);
+  gc.offsets[key] = record;
+  ErrNone()
+}
+
+/// Fetches the committed offset for a consumer group on a specific topic-partition
+fn (gc: *GroupCoordinator) FetchOffset(groupId: String, topic: String, partition: Int): OffsetAndMetadata => {
+  let key = `${groupId}:${topic}:${partition}`;
+  let existing = gc.offsets[key];
+  if (existing) {
+    return existing;
+  };
+  return NewOffsetAndMetadata(-1, "");
+}
+
+/// Lists all active group IDs
+fn (gc: *GroupCoordinator) ListGroups(): []String => {
+  return gc.groupIds;
+}

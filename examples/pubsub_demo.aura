@@ -1,0 +1,84 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// examples/pubsub_demo.aura - Full End-to-End Event Streaming Demo
+// ==============================================================================
+
+import { KafkaBroker, NewDefaultBroker } from "../server/broker";
+import { KafkaProducer, NewKafkaProducer, NewProducerRecord } from "../client/producer";
+import { KafkaConsumer, NewKafkaConsumer } from "../client/consumer";
+import { AdminClient, NewAdminClient, MakeNewTopic } from "../client/admin";
+import { NewDefaultProducerConfig, NewDefaultConsumerConfig } from "../client/config";
+import { PrintBanner } from "../kafka";
+
+export fn main(): Unit => {
+  PrintBanner();
+  println("🚀 DEMO: End-to-End Distributed Pub/Sub Pipeline in Aura");
+  println("==================================================");
+
+  // Step 1: Start Broker
+  println("\n[STEP 1] Starting Kafka Broker (KRaft Controller Mode)...");
+  let mut broker = NewDefaultBroker(101, 9092);
+  broker.Startup();
+
+  // Step 2: Topic Administration
+  println("\n[STEP 2] AdminClient Provisioning Topic 'payments' (3 Partitions)...");
+  let mut admin = NewAdminClient(broker);
+  let res = admin.CreateTopics([MakeNewTopic("payments", 3, 1)]);
+  match res {
+    Ok(_) => println("  ✓ Topic 'payments' created."),
+    Err(e) => println(`  ✕ Topic creation error: ${e}`)
+  };
+
+  // Step 3: Produce Messages
+  println("\n[STEP 3] Producing Financial Transactions with Key-based Partitioning...");
+  let pCfg = NewDefaultProducerConfig();
+  let mut producer = NewKafkaProducer(pCfg, broker);
+
+  let transactions = [
+    { key: "acct-001", amount: 150.0 },
+    { key: "acct-002", amount: 25.5 },
+    { key: "acct-001", amount: 80.0 },
+    { key: "acct-003", amount: 1200.0 },
+    { key: "acct-002", amount: 310.0 },
+    { key: "acct-004", amount: 95.0 }
+  ];
+
+  let mut i = 0;
+  while i < len(transactions) {
+    let t = transactions[i];
+    let val = `{\"account\":\"${t.key}\",\"amount\":${t.amount}}`;
+    let resSend = producer.Send(NewProducerRecord("payments", t.key, val));
+    match resSend {
+      Ok(meta) => {
+        println(`  → [Partition ${meta.partition}] Offset ${meta.offset} | Key: ${t.key} | Amount: $${t.amount}`);
+      },
+      Err(err) => println(`  ✕ Send error: ${err}`)
+    };
+    i += 1;
+  };
+
+  // Step 4: Consume Messages
+  println("\n[STEP 4] Consumers in Group 'fraud-detector-group' Processing Events...");
+  let mut cCfg = NewDefaultConsumerConfig("fraud-detector-group");
+  cCfg.autoOffsetReset = "earliest";
+  let mut consumer = NewKafkaConsumer(cCfg, broker);
+
+  consumer.Subscribe(["payments"]);
+  let records = consumer.Poll(1000);
+  println(`  ✓ Successfully fetched ${len(records)} transactions across all partitions.`);
+
+  let mut j = 0;
+  while j < len(records) {
+    let r = records[j];
+    println(`    ✓ [Part ${r.partition} | Off ${r.offset}] ${r.key} => ${r.value}`);
+    j += 1;
+  };
+
+  // Step 5: Clean Shutdown
+  println("\n[STEP 5] Clean Shutdown of Consumer, Producer, and Broker...");
+  consumer.Close();
+  producer.Close();
+  broker.Shutdown();
+
+  println("\n🎉 Event streaming demo completed successfully!");
+}

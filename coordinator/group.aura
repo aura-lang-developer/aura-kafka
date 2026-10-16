@@ -1,0 +1,117 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// coordinator/group.aura - Consumer Group State Machine & Member Management
+// Based on org.apache.kafka.coordinator.group.GroupMetadata
+// ==============================================================================
+
+export fn GroupStateEmpty(): String => "Empty";
+export fn GroupStatePreparingRebalance(): String => "PreparingRebalance";
+export fn GroupStateCompletingRebalance(): String => "CompletingRebalance";
+export fn GroupStateStable(): String => "Stable";
+export fn GroupStateDead(): String => "Dead";
+
+/// Represents an individual consumer connected in a consumer group
+export struct GroupMember {
+  memberId: String,
+  groupInstanceId: String,
+  clientId: String,
+  clientHost: String,
+  protocols: []String,
+  assignedPartitions: []String,
+  lastHeartbeatTime: Int
+};
+
+export fn NewGroupMember(memberId: String, clientId: String, clientHost: String, protocols: []String): GroupMember => {
+  let emptyAssigned: []String = [];
+  return {
+    memberId: memberId,
+    groupInstanceId: "",
+    clientId: clientId,
+    clientHost: clientHost,
+    protocols: protocols,
+    assignedPartitions: emptyAssigned,
+    lastHeartbeatTime: 0
+  };
+}
+
+/// Represents a managed Consumer Group in Kafka
+export struct ConsumerGroup {
+  groupId: String,
+  protocolType: String,
+  state: String,
+  leaderId: String,
+  generationId: Int,
+  members: Any,
+  memberIds: []String
+};
+
+export fn NewConsumerGroup(groupId: String, protocolType: String): ConsumerGroup => {
+  let mMap: Any = {};
+  let ids: []String = [];
+  return {
+    groupId: groupId,
+    protocolType: protocolType,
+    state: GroupStateEmpty(),
+    leaderId: "",
+    generationId: 0,
+    members: mMap,
+    memberIds: ids
+  };
+}
+
+/// Checks if member exists in the group
+fn (cg: *ConsumerGroup) HasMember(memberId: String): Bool => {
+  let m = cg.members[memberId];
+  if (m) { true } else { false }
+}
+
+/// Adds or updates a member in the group
+fn (cg: *ConsumerGroup) AddMember(member: GroupMember): Unit => {
+  if (!cg.HasMember(member.memberId)) {
+    cg.memberIds.push(member.memberId);
+  };
+  cg.members[member.memberId] = member;
+  if (len(cg.leaderId) == 0) {
+    cg.leaderId = member.memberId;
+  };
+  cg.state = GroupStateStable();
+}
+
+/// Removes a member from the group
+fn (cg: *ConsumerGroup) RemoveMember(memberId: String): Bool => {
+  if (!cg.HasMember(memberId)) {
+    return false;
+  };
+
+  cg.members[memberId] = null;
+  let mut newIds: []String = [];
+  let mut i = 0;
+  while i < len(cg.memberIds) {
+    if (cg.memberIds[i] != memberId) {
+      newIds.push(cg.memberIds[i]);
+    };
+    i += 1;
+  };
+  cg.memberIds = newIds;
+
+  if (cg.leaderId == memberId) {
+    if (len(cg.memberIds) > 0) {
+      cg.leaderId = cg.memberIds[0];
+    } else {
+      cg.leaderId = "";
+      cg.state = GroupStateEmpty();
+    };
+  };
+
+  return true;
+}
+
+/// Returns the number of members currently joined
+fn (cg: *ConsumerGroup) NumMembers(): Int => {
+  return len(cg.memberIds);
+}
+
+/// Returns the member ids joined in this group
+fn (cg: *ConsumerGroup) GetMemberIds(): []String => {
+  return cg.memberIds;
+}

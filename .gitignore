@@ -1,0 +1,5 @@
+# Build and temporary files
+*.tmp.mjs
+*.tmp.js
+*.d.ts
+.DS_Store

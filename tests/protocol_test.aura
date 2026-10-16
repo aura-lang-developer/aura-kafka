@@ -1,0 +1,112 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// tests/protocol_test.aura - Unit Tests for Protocol, ApiKeys & Error Codes
+// ==============================================================================
+
+import {
+  ApiKeyProduce,
+  ApiKeyFetch,
+  ApiKeyMetadata,
+  ApiKeyApiVersions,
+  ApiKeyCreateTopics,
+  ApiKeyDeleteTopics,
+  ApiKeyName,
+  IsClusterKey
+} from "../protocol/apikeys";
+
+import {
+  ErrNone,
+  ErrOffsetOutOfRange,
+  ErrUnknownTopicOrPartition,
+  ErrNotLeaderOrFollower,
+  ErrTopicAlreadyExists,
+  NewKafkaError,
+  ErrorMessage,
+  IsRetriable
+} from "../protocol/errors";
+
+import {
+  RequestHeader,
+  NewRequestHeader,
+  ResponseHeader,
+  NewResponseHeader
+} from "../protocol/header";
+
+export fn main(): Unit => {
+  let mut passed = 0;
+  let mut failed = 0;
+
+  println("================================================================================");
+  println("  🧪 AURAKAFKA - WIRE PROTOCOL UNIT TESTS");
+  println("================================================================================");
+
+  // Test 1: API Keys & Names
+  println("\n[TEST 1] API Keys Specification & Naming");
+  if (ApiKeyProduce() == 0 && ApiKeyFetch() == 1 && ApiKeyMetadata() == 3 && ApiKeyApiVersions() == 18) {
+    println("  ✓ PASS: Standard Kafka API keys match specification");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: API key constants mismatch");
+    failed += 1;
+  };
+
+  if (ApiKeyName(0) == "PRODUCE" && ApiKeyName(1) == "FETCH" && ApiKeyName(3) == "METADATA") {
+    println("  ✓ PASS: API key names correctly resolved");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: ApiKeyName mismatch");
+    failed += 1;
+  };
+
+  if (IsClusterKey(4) && !IsClusterKey(0)) {
+    println("  ✓ PASS: Cluster key identification verified");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: IsClusterKey mismatch");
+    failed += 1;
+  };
+
+  // Test 2: Error Codes & Retriability
+  println("\n[TEST 2] Error Codes & Retriability Classification");
+  let errNotLeader = NewKafkaError(ErrNotLeaderOrFollower());
+  if (errNotLeader.code == 6 && errNotLeader.retriable) {
+    println("  ✓ PASS: ErrNotLeaderOrFollower (code 6) is correctly classified as retriable");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: Error retriable check mismatch");
+    failed += 1;
+  };
+
+  let errTopicExists = NewKafkaError(ErrTopicAlreadyExists());
+  if (errTopicExists.code == 36 && !errTopicExists.retriable) {
+    println("  ✓ PASS: ErrTopicAlreadyExists (code 36) is non-retriable");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: Error non-retriable check mismatch");
+    failed += 1;
+  };
+
+  // Test 3: Wire Protocol Headers
+  println("\n[TEST 3] Request and Response Wire Headers");
+  let reqH = NewRequestHeader(ApiKeyProduce(), 7, 1001, "aura-producer-client");
+  if (reqH.apiKey == 0 && reqH.apiVersion == 7 && reqH.correlationId == 1001 && reqH.clientId == "aura-producer-client") {
+    println("  ✓ PASS: RequestHeader constructed properly with metadata");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: RequestHeader fields mismatch");
+    failed += 1;
+  };
+
+  let resH = NewResponseHeader(1001);
+  if (resH.correlationId == 1001) {
+    println("  ✓ PASS: ResponseHeader correlation ID matches request");
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: ResponseHeader correlation mismatch");
+    failed += 1;
+  };
+
+  println("--------------------------------------------------------------------------------");
+  println(`  📊 RESULTS: ${passed} PASSED | ${failed} FAILED`);
+  println("================================================================================");
+}

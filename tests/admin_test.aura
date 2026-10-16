@@ -1,0 +1,102 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// tests/admin_test.aura - Unit Tests for AdminClient
+// ==============================================================================
+
+import { KafkaBroker, NewDefaultBroker } from "../server/broker";
+import { AdminClient, NewAdminClient, MakeNewTopic } from "../client/admin";
+
+export fn main(): Unit => {
+  let mut passed = 0;
+  let mut failed = 0;
+
+  println("================================================================================");
+  println("  🧪 AURAKAFKA - ADMIN CLIENT UNIT TESTS");
+  println("================================================================================");
+
+  let mut broker = NewDefaultBroker(1, 9092);
+  broker.Startup();
+
+  let mut admin = NewAdminClient(broker);
+
+  // Test 1: Create Topics
+  println("\n[TEST 1] AdminClient CreateTopics");
+  let t1 = MakeNewTopic("finance-events", 3, 1);
+  let t2 = MakeNewTopic("audit-logs", 2, 1);
+  let createRes = admin.CreateTopics([t1, t2]);
+
+  match createRes {
+    Ok(success) => {
+      if (success) {
+        println("  ✓ PASS: Successfully created 'finance-events' (3 parts) and 'audit-logs' (2 parts)");
+        passed += 1;
+      } else {
+        println("  ✕ FAIL: CreateTopics returned false");
+        failed += 1;
+      };
+    },
+    Err(e) => {
+      println(`  ✕ FAIL: CreateTopics error: ${e}`);
+      failed += 1;
+    }
+  };
+
+  // Test 2: ListTopics
+  println("\n[TEST 2] AdminClient ListTopics");
+  let topicList = admin.ListTopics();
+  if (topicList != undefined && len(topicList) == 2) {
+    println(`  ✓ PASS: ListTopics returned 2 topics: ${topicList[0]}, ${topicList[1]}`);
+    passed += 1;
+  } else {
+    println(`  ✕ FAIL: Expected 2 topics, got ${len(topicList)}`);
+    failed += 1;
+  };
+
+  // Test 3: DescribeTopics
+  println("\n[TEST 3] AdminClient DescribeTopics");
+  let desc = admin.DescribeTopics(["finance-events"]);
+  if (len(desc) == 1 && len(desc[0].partitions) == 3 && desc[0].name == "finance-events") {
+    println(`  ✓ PASS: DescribeTopics accurately returned metadata for 3 partitions with leader ${desc[0].partitions[0].leader}`);
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: DescribeTopics mismatch");
+    failed += 1;
+  };
+
+  // Test 4: DescribeCluster
+  println("\n[TEST 4] AdminClient DescribeCluster");
+  let clusterInfo = admin.DescribeCluster();
+  if (len(clusterInfo) > 0) {
+    println(`  ✓ PASS: ${clusterInfo}`);
+    passed += 1;
+  } else {
+    println("  ✕ FAIL: DescribeCluster returned empty string");
+    failed += 1;
+  };
+
+  // Test 5: DeleteTopics
+  println("\n[TEST 5] AdminClient DeleteTopics");
+  let delRes = admin.DeleteTopics(["audit-logs"]);
+  match delRes {
+    Ok(success) => {
+      let remaining = admin.ListTopics();
+      if (success && len(remaining) == 1 && remaining[0] == "finance-events") {
+        println("  ✓ PASS: Successfully deleted 'audit-logs', 1 topic remaining");
+        passed += 1;
+      } else {
+        println("  ✕ FAIL: Topic deletion verification failed");
+        failed += 1;
+      };
+    },
+    Err(e) => {
+      println(`  ✕ FAIL: DeleteTopics error: ${e}`);
+      failed += 1;
+    }
+  };
+
+  broker.Shutdown();
+
+  println("--------------------------------------------------------------------------------");
+  println(`  📊 RESULTS: ${passed} PASSED | ${failed} FAILED`);
+  println("================================================================================");
+}

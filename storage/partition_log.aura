@@ -1,0 +1,117 @@
+// ==============================================================================
+// Apache Kafka for Aura Language (AuraKafka)
+// storage/partition_log.aura - Kafka Partition Unified Log
+// Based on org.apache.kafka.storage.internals.log.UnifiedLog
+// ==============================================================================
+
+import { Record } from "./record";
+import { LogSegment, NewLogSegment } from "./segment";
+
+/// Unified append-only log representing a single topic-partition
+export struct PartitionLog {
+  topic: String,
+  partitionId: Int,
+  segments: []LogSegment,
+  activeSegmentIndex: Int,
+  logStartOffset: Int,
+  logEndOffset: Int,
+  highWatermark: Int,
+  segmentMaxBytes: Int
+};
+
+/// Creates a new PartitionLog with initial active segment at offset 0
+export fn NewPartitionLog(topic: String, partitionId: Int, segmentMaxBytes: Int): PartitionLog => {
+  let initialSegment = NewLogSegment(0, segmentMaxBytes);
+  let segs: []LogSegment = [initialSegment];
+
+  return {
+    topic: topic,
+    partitionId: partitionId,
+    segments: segs,
+    activeSegmentIndex: 0,
+    logStartOffset: 0,
+    logEndOffset: 0,
+    highWatermark: 0,
+    segmentMaxBytes: segmentMaxBytes
+  };
+}
+
+/// Appends records to the active segment, rolling if segment reaches capacity
+fn (plog: *PartitionLog) AppendRecords(records: []Record): Result<Int, String> => {
+  if (len(records) == 0) {
+    return Ok(plog.logEndOffset);
+  };
+
+  let activeIdx = plog.activeSegmentIndex;
+  if (plog.segments[activeIdx].IsFull()) {
+    plog.segments[activeIdx].Close();
+    let newSeg = NewLogSegment(plog.logEndOffset, plog.segmentMaxBytes);
+    plog.segments.push(newSeg);
+    plog.activeSegmentIndex = len(plog.segments) - 1;
+  };
+
+  let curIdx = plog.activeSegmentIndex;
+  let appendRes = plog.segments[curIdx].Append(records);
+
+  match appendRes {
+    Ok(baseOffset) => {
+      plog.logEndOffset = plog.segments[curIdx].nextOffset;
+      plog.highWatermark = plog.logEndOffset;
+      return Ok(baseOffset);
+    },
+    Err(err) => {
+      return Err(err);
+    }
+  }
+}
+
+/// Reads records starting at startOffset up to maxBytes or maxCount
+fn (plog: *PartitionLog) ReadRecords(startOffset: Int, maxBytes: Int, maxCount: Int): []Record => {
+  let mut result: []Record = [];
+  if (startOffset >= plog.logEndOffset || startOffset < plog.logStartOffset) {
+    return result;
+  };
+
+  let numSegs = len(plog.segments);
+  let mut sIdx = 0;
+  let mut remainingCount = maxCount;
+
+  while sIdx < numSegs && remainingCount > 0 {
+    let seg = plog.segments[sIdx];
+    if (seg.nextOffset > startOffset) {
+      let batch = seg.Read(startOffset, maxBytes, remainingCount);
+      let bCount = len(batch);
+      let mut bIdx = 0;
+      while bIdx < bCount {
+        result.push(batch[bIdx]);
+        bIdx += 1;
+      };
+      remainingCount -= bCount;
+    };
+    sIdx += 1;
+  };
+
+  result
+}
+
+/// Updates the High Watermark (HW) offset
+fn (plog: *PartitionLog) UpdateHighWatermark(hw: Int): Unit => {
+  if (hw <= plog.logEndOffset && hw >= plog.highWatermark) {
+    plog.highWatermark = hw;
+  }
+}
+
+/// Returns the Log End Offset (LEO)
+fn (plog: *PartitionLog) GetLEO(): Int => {
+  return plog.logEndOffset;
+}
+
+/// Returns the High Watermark (HW)
+fn (plog: *PartitionLog) GetHW(): Int => {
+  return plog.highWatermark;
+}
+
+/// Returns the Log Start Offset
+fn (plog: *PartitionLog) GetStartOffset(): Int => {
+  return plog.logStartOffset;
+}
