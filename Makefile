@@ -5,7 +5,7 @@
 
 AURA ?= aura
 
-.PHONY: all check test test-storage test-protocol test-coordinator test-producer test-consumer test-admin test-e2e demo run-demo run-producer run-consumer tools fmt clean
+.PHONY: all check test test-storage test-protocol test-coordinator test-producer test-consumer test-admin test-e2e demo run-demo run-producer run-consumer tools tools-topics tools-producer tools-consumer tools-server cli build fmt clean
 
 all: test
 
@@ -30,6 +30,7 @@ check:
 	@$(AURA) check client/producer.aura
 	@$(AURA) check client/consumer.aura
 	@$(AURA) check client/admin.aura
+	@$(AURA) check cli.aura
 	@echo "✓ All AuraKafka components verified successfully."
 
 test: test-storage test-protocol test-coordinator test-producer test-consumer test-admin test-e2e
@@ -82,9 +83,19 @@ tools-consumer:
 tools-server:
 	@$(AURA) run tools/server_main.aura
 
+cli:
+	@$(AURA) run cli.aura help
+
+build:
+	@mkdir -p bin
+	@echo "📦 Compiling standalone unified binary 'bin/aurakafka'..."
+	@$(AURA) build cli.aura -o bin/aurakafka --release
+	@echo "✓ Unified binary created at bin/aurakafka"
+
 fmt:
 	@$(AURA) fmt -w .
 
 clean:
-	@rm -rf *.tmp.mjs tests/*.tmp.mjs examples/*.tmp.mjs tools/*.tmp.mjs
+	@rm -rf *.tmp.mjs tests/*.tmp.mjs examples/*.tmp.mjs tools/*.tmp.mjs *.__aura_tmp* *.o bin/ data/
 	@echo "✓ Cleaned temporary build artifacts."
+

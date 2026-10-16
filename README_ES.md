@@ -18,6 +18,28 @@
 
 ---
 
+## 📑 Tabla de Contenidos
+
+- [🏛️ Arquitectura del Sistema](#️-arquitectura-del-sistema)
+- [🌟 Características Principales](#-características-principales)
+- [🚀 Inicio Rápido](#-inicio-rápido)
+- [⚡ Flujo de Ejecución en Ambiente Local](#-flujo-de-ejecución-en-ambiente-local)
+  - [Pasos Manuales del Flujo](#pasos-manuales-del-flujo)
+  - [Automatización con el Script start-local.sh](#automatización-con-el-script-start-localsh)
+  - [Tabla de Opciones de start-local.sh](#tabla-de-opciones-de-start-localsh)
+- [🔨 Compilación de Binarios Nativos Standalone](#-compilación-de-binarios-nativos-standalone)
+  - [🌟 Binario Único Unificado (bin/aurakafka) - Recomendado](#-binario-único-unificado-binaurakafka---recomendado)
+  - [Requisitos Previos y Directorio de Salida](#requisitos-previos-y-directorio-de-salida)
+  - [Comandos de Creación de Build](#comandos-de-creación-de-build)
+  - [Banderas de Optimización](#banderas-de-optimización)
+  - [Diferencia entre aura build y aura run](#diferencia-entre-aura-build-y-aura-run)
+- [🧪 Ejecución de Pruebas Automatizadas](#-ejecución-de-pruebas-automatizadas)
+- [🛠️ Herramientas CLI Incluidas](#️-herramientas-cli-incluidas)
+- [📂 Estructura del Proyecto](#-estructura-del-proyecto)
+- [📜 Licencia](#-licencia)
+
+---
+
 ## 🏛️ Arquitectura del Sistema
 
 AuraKafka reproduce fielmente todos los niveles estructurales de Apache Kafka:
@@ -123,6 +145,185 @@ aura run examples/pubsub_demo.aura
 
 ---
 
+## ⚡ Flujo de Ejecución en Ambiente Local
+
+Para levantar y probar los servicios de AuraKafka en tu entorno local, el proyecto cuenta con un flujo completo de 4 etapas que comprende desde el arranque del Broker KRaft hasta la producción y consumo de registros en tópicos particionados.
+
+### Pasos Manuales del Flujo
+
+Si deseas ejecutar cada componente de manera independiente paso a paso:
+
+```bash
+# 1. Verificar la sintaxis y tipos de todos los módulos
+make check
+
+# 2. Iniciar el Broker Server en modo KRaft (Daemon)
+aura run tools/server_main.aura
+
+# 3. Aprovisionar y describir tópicos (kafka-topics)
+aura run tools/topics_cli.aura
+
+# 4. Producir eventos de prueba (kafka-console-producer)
+aura run tools/console_producer.aura
+
+# 5. Consumir eventos con un grupo de consumidores (kafka-console-consumer)
+aura run tools/console_consumer.aura
+
+# 6. Ejecutar el pipeline distribuido completo End-to-End
+aura run examples/pubsub_demo.aura
+```
+
+---
+
+### Automatización con el Script `start-local.sh`
+
+Para simplificar el proceso y evitar ejecutar múltiples comandos por separado, se incluye el script automatizado [`start-local.sh`](file:///Users/rojasmauricio/Projects/AuraProjects/aura-kafka/start-local.sh) en la raíz del repositorio.
+
+#### Dar permisos de ejecución:
+```bash
+chmod +x start-local.sh
+```
+
+#### Ejecutar el flujo completo de inicialización:
+```bash
+./start-local.sh
+```
+
+Este comando ejecuta de forma secuencial:
+1. Verificación del compilador `aura` en el sistema.
+2. Inicialización de los directorios locales de trabajo (`bin/`, `data/`).
+3. Arranque del **Broker Server** (verificación de salud del clúster KRaft).
+4. Creación de los tópicos `orders-stream` y `user-events` con particiones e ISR.
+5. Publicación de eventos en tiempo real con particionado consistente por llave (djb2).
+6. Consumo y commit de offsets desde el inicio (`--from-beginning`) mediante Consumer Group.
+
+---
+
+### Tabla de Opciones de `start-local.sh`
+
+El script permite interactuar modularmente con los distintos servicios mediante banderas:
+
+| Comando | Acción Realizada | Archivo Asociado |
+|---|---|---|
+| `./start-local.sh` | Flujo integral completo de inicialización y prueba | Secuencia completa |
+| `./start-local.sh --server` | Inicia el broker en modo KRaft y ejecuta healthcheck | `tools/server_main.aura` |
+| `./start-local.sh --topics` | Crea, lista y describe tópicos y particiones | `tools/topics_cli.aura` |
+| `./start-local.sh --producer` | Envía mensajes de prueba a un tópico particionado | `tools/console_producer.aura` |
+| `./start-local.sh --consumer` | Consume mensajes desde el principio (`--from-beginning`) | `tools/console_consumer.aura` |
+| `./start-local.sh --demo` | Ejecuta la demo pub/sub completa con métricas | `examples/pubsub_demo.aura` |
+| `./start-local.sh --bench` | Ejecuta el micro-benchmark de throughput | `tests/benchmark.aura` |
+| `./start-local.sh --check` | Valida todos los archivos fuente con el compilador | `kafka.aura` y submódulos |
+| `./start-local.sh --test` | Ejecuta las 37 pruebas unitarias e integrales | `tests/*_test.aura` |
+| `./start-local.sh --clean` | Limpia binarios generados y archivos temporales | `bin/`, `*.tmp.*` |
+| `./start-local.sh --help` | Muestra la ayuda y lista de comandos | - |
+
+---
+
+## 🔨 Compilación de Binarios Nativos Standalone
+
+AuraKafka puede ser compilado a binarios ejecutables nativos independientes (Mach-O en macOS, ELF en Linux) mediante el comando `aura build` del compilador de Aura. Estos ejecutables son autocontenidos y no requieren dependencias externas ni entornos de ejecución adicionales.
+
+### Requisitos Previos y Directorio de Salida
+
+Antes de compilar, asegúrate de crear el directorio de destino para los binarios (por ejemplo, `bin/`):
+
+```bash
+mkdir -p bin
+```
+
+### 🌟 Binario Único Unificado (`bin/aurakafka`) - Recomendado
+
+AuraKafka incluye un punto de entrada centralizado [`cli.aura`](file:///Users/rojasmauricio/Projects/AuraProjects/aura-kafka/cli.aura) que permite empaquetar y ejecutar **todos los componentes del proyecto** (Broker, Topics, Producer, Consumer, Demo y Benchmark) mediante un único ejecutable standalone:
+
+```bash
+# Compilar el binario unificado:
+make build
+# o invocando directamente el compilador Aura:
+aura build cli.aura -o bin/aurakafka --release
+```
+
+Una vez generado, puedes ejecutar cualquier servicio pasando el subcomando deseado:
+
+```bash
+./bin/aurakafka server     # Iniciar Broker Server en modo KRaft (Daemon)
+./bin/aurakafka topics     # Aprovisionar, listar y describir tópicos
+./bin/aurakafka producer   # Publicar eventos con particionado consistente
+./bin/aurakafka consumer   # Consumir eventos con grupos de consumidores
+./bin/aurakafka demo       # Pipeline distribuido completo Pub/Sub
+./bin/aurakafka bench      # Micro-benchmark de throughput de mensajes
+./bin/aurakafka help       # Ayuda y lista de subcomandos disponibles
+```
+
+> [!TIP]
+> También puedes ejecutar el CLI unificado de inmediato en modo interactivo sin necesidad de compilarlo previamente:
+> ```bash
+> make cli
+> # o directamente:
+> aura run cli.aura help
+> aura run cli.aura server
+> aura run cli.aura demo
+> ```
+
+---
+
+### Compilación de Componentes Individuales (Opcional)
+
+#### 1. Servidor Broker Kafka (`bin/kafka-server`)
+Compila el daemon del broker de Kafka con modo KRaft (`tools/server_main.aura`):
+```bash
+aura build tools/server_main.aura -o bin/kafka-server --release
+```
+Para ejecutar el broker nativo:
+```bash
+./bin/kafka-server
+```
+
+#### 2. Micro-Benchmark de Rendimiento (`bin/kafka-benchmark`)
+Compila la suite de benchmark síncrono de alto rendimiento para el productor y consumidor (`tests/benchmark.aura`):
+```bash
+aura build tests/benchmark.aura -o bin/kafka-benchmark --release -O3
+```
+Para ejecutar el benchmark:
+```bash
+./bin/kafka-benchmark
+```
+
+#### 3. Herramientas CLI de Gestión y Streaming
+Compila los ejecutables de administración y consola de Kafka:
+```bash
+# Herramienta de administración de tópicos (kafka-topics)
+aura build tools/topics_cli.aura -o bin/kafka-topics --release
+
+# Productor de consola interactivo (kafka-console-producer)
+aura build tools/console_producer.aura -o bin/kafka-console-producer --release
+
+# Consumidor de consola interactivo (kafka-console-consumer)
+aura build tools/console_consumer.aura -o bin/kafka-console-consumer --release
+```
+
+#### 4. Demostración Pub/Sub Completa
+Compila la demo de pipeline de eventos distribuido:
+```bash
+aura build examples/pubsub_demo.aura -o bin/kafka-pubsub-demo --release
+./bin/kafka-pubsub-demo
+```
+
+### Banderas de Optimización
+
+| Bandera | Descripción |
+|---|---|
+| `-o <ruta>` | Especifica la ruta y nombre del binario generado (ej. `-o bin/kafka-server`). |
+| `--release` | Habilita optimizaciones de producción y eliminación de código muerto. |
+| `-O3` | Nivel máximo de optimizaciones para throughput y velocidad de procesamiento. |
+| `--target native` | Compila directamente para la arquitectura de la máquina anfitriona (Apple Silicon / x86_64). |
+
+### Diferencia entre `aura build` y `aura run`
+
+- **`aura build <archivo.aura> -o <binario>`**: Genera en disco un ejecutable binario nativo compilado en código máquina para distribución independiente y máximo rendimiento en producción.
+- **`aura run <archivo.aura>`**: Modo interactivo para desarrollo, ejecución inmediata de pruebas unitarias (`make test`) y prototipado rápido sin generar binarios persistentes.
+
+---
+
 ## 🧪 Ejecución de Pruebas Automatizadas
 
 ```bash
@@ -152,6 +353,68 @@ AuraKafka cuenta con **7 suites de pruebas** con **37 pruebas unitarias e integr
 
 ---
 
+## 📂 Estructura del Proyecto
+
+```
+AuraKafka/
+├── aura.mod                    # Definición del módulo Aura (github.com/apache/kafka-aura)
+├── kafka.aura                  # Fachada de la biblioteca, versionamiento y banner ASCII
+├── Makefile                    # Automatización de tareas, pruebas y verificación
+├── README.md                   # Documentación principal en inglés
+├── README_ES.md                # Documentación en español
+│
+├── protocol/                   # Protocolo Wire de Apache Kafka
+│   ├── apikeys.aura            # Catálogo de API Keys (Produce 0, Fetch 1, KRaft, etc.)
+│   ├── errors.aura             # Códigos de error canónicos y clasificación retriable
+│   ├── header.aura             # Encabezados de paquetes Request/Response
+│   └── messages.aura           # Esquemas de mensajes para todas las APIs de Kafka
+│
+├── storage/                    # Motor de Almacenamiento Append-Only de Particiones
+│   ├── record.aura             # Modelos de Record, cabeceras y RecordBatch
+│   ├── segment.aura            # LogSegment con offsets monotónicos y límites de tamaño
+│   ├── partition_log.aura      # Log de partición unificado con LEO y High Watermark
+│   └── log_manager.aura        # Catálogo de tópicos y asignación de particiones
+│
+├── coordinator/                # Coordinador de Grupos y Controlador de Quórum
+│   ├── group.aura              # Máquina de estados y membresía del grupo de consumidores
+│   ├── coordinator.aura        # GroupCoordinator gestionando rebalances y almacenamiento de offsets
+│   └── kraft.aura              # Controlador de Quórum KRaft y elecciones de líder
+│
+├── server/                     # Núcleo del Broker Kafka
+│   ├── config.aura             # Configuración del servidor (KafkaServerConfig)
+│   ├── replica_manager.aura    # Estado de réplicas de particiones y seguimiento de ISR
+│   └── broker.aura             # KafkaBroker despachador de peticiones
+│
+├── client/                     # SDK de Clientes Kafka en Aura
+│   ├── config.aura             # Valores por defecto de ProducerConfig y ConsumerConfig
+│   ├── producer.aura           # KafkaProducer con particionado por hash y round-robin
+│   ├── consumer.aura           # KafkaConsumer con asignación automática y commits
+│   └── admin.aura              # AdminClient para operaciones de clúster y tópicos
+│
+├── tools/                      # Herramientas de Línea de Comandos (CLI)
+│   ├── topics_cli.aura         # kafka-topics
+│   ├── console_producer.aura   # kafka-console-producer
+│   ├── console_consumer.aura   # kafka-console-consumer
+│   └── server_main.aura        # kafka-server-start
+│
+├── examples/                   # Aplicaciones y Demostraciones
+│   ├── pubsub_demo.aura        # Demostración del pipeline pub/sub distribuido
+│   ├── producer_example.aura   # Demostración de uso del productor
+│   └── consumer_example.aura   # Demostración de uso del consumidor
+│
+└── tests/                      # Suites de Pruebas Unitarias e Integración (37 Pruebas)
+    ├── storage_test.aura       # Pruebas del motor de almacenamiento (7/7)
+    ├── protocol_test.aura      # Pruebas del protocolo wire (7/7)
+    ├── coordinator_test.aura   # Pruebas de coordinador y KRaft (6/6)
+    ├── producer_test.aura      # Pruebas del cliente productor (3/3)
+    ├── consumer_test.aura      # Pruebas del cliente consumidor (3/3)
+    ├── admin_test.aura         # Pruebas del cliente administrativo (5/5)
+    └── e2e_cluster_test.aura   # Pruebas integrales del ciclo de vida del clúster (6/6)
+```
+
+---
+
 ## 📜 Licencia
 
 Licencia Apache 2.0. Basado en [Apache Kafka](https://github.com/apache/kafka).
+

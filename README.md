@@ -18,6 +18,31 @@ AuraKafka is a high-performance distributed event streaming platform built entir
 
 ---
 
+## 📑 Table of Contents
+
+- [🏛️ Architecture & Overview](#️-architecture--overview)
+- [🌟 Key Features](#-key-features)
+- [🚀 Quickstart](#-quickstart)
+- [⚡ Local Environment & Service Execution Flow](#-local-environment--service-execution-flow)
+  - [Manual Execution Steps](#manual-execution-steps)
+  - [Automated Initialization with start-local.sh](#automated-initialization-with-start-localsh)
+  - [start-local.sh Command Reference](#start-localsh-command-reference)
+- [🔨 Building Standalone Native Binaries](#-building-standalone-native-binaries)
+  - [🌟 Unified Standalone Binary (bin/aurakafka) - Recommended](#-unified-standalone-binary-binaurakafka---recommended)
+  - [Prerequisites & Output Directory](#prerequisites--output-directory)
+  - [Compiling Individual Project Binaries](#compiling-individual-project-binaries)
+  - [Build Flags & Optimizations](#build-flags--optimizations)
+  - [aura build vs aura run](#aura-build-vs-aura-run)
+- [🛠️ Running CLI Tools](#️-running-cli-tools)
+- [🧪 Comprehensive Test Suite](#-comprehensive-test-suite)
+- [📖 Usage Examples](#-usage-examples)
+  - [Producing Messages](#producing-messages)
+  - [Consuming Messages with Consumer Groups](#consuming-messages-with-consumer-groups)
+- [📂 Project Structure](#-project-structure)
+- [📜 License](#-license)
+
+---
+
 ## 🏛️ Architecture & Overview
 
 AuraKafka re-implements Apache Kafka's core architectural tiers in modern Aura:
@@ -163,6 +188,183 @@ Output:
 
 🎉 Event streaming demo completed successfully!
 ```
+
+---
+
+## ⚡ Local Environment & Service Execution Flow
+
+AuraKafka provides an integrated lifecycle flow for running and testing services in your local environment without needing external containers or third-party infrastructure.
+
+### Manual Execution Steps
+
+You can launch and verify each core component independently using the Aura CLI:
+
+```bash
+# 1. Type-check and verify all source files
+make check
+
+# 2. Start the Kafka Broker Server (KRaft mode daemon)
+aura run tools/server_main.aura
+
+# 3. Provision and inspect Kafka topics (kafka-topics)
+aura run tools/topics_cli.aura
+
+# 4. Produce sample events (kafka-console-producer)
+aura run tools/console_producer.aura
+
+# 5. Consume events with consumer groups (kafka-console-consumer)
+aura run tools/console_consumer.aura
+
+# 6. Run the complete end-to-end pub/sub demo
+aura run examples/pubsub_demo.aura
+```
+
+---
+
+### Automated Initialization with `start-local.sh`
+
+The project includes [`start-local.sh`](file:///Users/rojasmauricio/Projects/AuraProjects/aura-kafka/start-local.sh), an automated bash bootstrap script that sets up runtime directories, checks prerequisites, and initializes all local services in sequence.
+
+#### Make the script executable:
+```bash
+chmod +x start-local.sh
+```
+
+#### Run full local initialization:
+```bash
+./start-local.sh
+```
+
+This single command automatically performs:
+1. Toolchain verification (`aura` compiler availability and version).
+2. Runtime directory preparation (`bin/`, `data/`).
+3. **Broker Server** cold boot and cluster quorum health check.
+4. **Topic Provisioning**: creates `orders-stream` (3 partitions) and `user-events` (2 partitions).
+5. **Event Streaming**: publishes sample events with consistent hash partitioning (djb2).
+6. **Consumer Group**: consumes all records from partition logs with synchronous offset commits.
+
+---
+
+### `start-local.sh` Command Reference
+
+| Command | Action | Source File |
+|---|---|---|
+| `./start-local.sh` | Full end-to-end local bootstrap and execution | Full pipeline |
+| `./start-local.sh --server` | Start the Kafka broker daemon & perform health check | `tools/server_main.aura` |
+| `./start-local.sh --topics` | Provision, list, and describe topics and partitions | `tools/topics_cli.aura` |
+| `./start-local.sh --producer` | Publish sample events to partitioned topics | `tools/console_producer.aura` |
+| `./start-local.sh --consumer` | Consume messages from partition logs (`--from-beginning`) | `tools/console_consumer.aura` |
+| `./start-local.sh --demo` | Run full distributed streaming pipeline demo with metrics | `examples/pubsub_demo.aura` |
+| `./start-local.sh --bench` | Run high-throughput micro-benchmark | `tests/benchmark.aura` |
+| `./start-local.sh --check` | Verify syntax and types across all Aura packages | `kafka.aura` & modules |
+| `./start-local.sh --test` | Execute complete test suite (37/37 unit & integration tests) | `tests/*_test.aura` |
+| `./start-local.sh --clean` | Remove temporary files, caches, and compiled binaries | `bin/`, `*.tmp.*` |
+| `./start-local.sh --help` | Display command usage and available options | - |
+
+---
+
+## 🔨 Building Standalone Native Binaries
+
+AuraKafka can be compiled into high-performance, standalone native executable binaries (Mach-O on macOS, ELF on Linux) using the Aura compiler's `aura build` command. These executables are self-contained with zero runtime dependencies.
+
+### Prerequisites & Output Directory
+
+Before building, create a destination directory for the compiled binaries (such as `bin/`):
+
+```bash
+mkdir -p bin
+```
+
+### 🌟 Unified Standalone Binary (`bin/aurakafka`) - Recommended
+
+AuraKafka includes a centralized entrypoint [`cli.aura`](file:///Users/rojasmauricio/Projects/AuraProjects/aura-kafka/cli.aura) that packages **all system components** (Broker, Topics, Producer, Consumer, Demo, and Benchmark) into a **single standalone executable**:
+
+```bash
+# Compile the unified binary:
+make build
+# or directly with the Aura compiler:
+aura build cli.aura -o bin/aurakafka --release
+```
+
+Once built, you can execute any subsystem using intuitive subcommands:
+
+```bash
+./bin/aurakafka server     # Start Kafka Broker daemon in KRaft mode
+./bin/aurakafka topics     # Provision, list, and describe topics & partitions
+./bin/aurakafka producer   # Publish events with consistent hash partitioning
+./bin/aurakafka consumer   # Consume records with Consumer Groups
+./bin/aurakafka demo       # Full distributed Pub/Sub streaming pipeline demo
+./bin/aurakafka bench      # Message throughput micro-benchmark
+./bin/aurakafka help       # Display available subcommands and usage
+```
+
+> [!TIP]
+> You can also run the unified CLI immediately in interactive development mode without building:
+> ```bash
+> make cli
+> # or directly:
+> aura run cli.aura help
+> aura run cli.aura server
+> aura run cli.aura demo
+> ```
+
+---
+
+### Compiling Individual Project Binaries (Optional)
+
+#### 1. Broker Server Daemon (`bin/kafka-server`)
+Compiles the main Kafka broker daemon (based on `tools/server_main.aura`):
+```bash
+aura build tools/server_main.aura -o bin/kafka-server --release
+```
+To run the native broker:
+```bash
+./bin/kafka-server
+```
+
+#### 2. Performance Micro-Benchmark (`bin/kafka-benchmark`)
+Compiles the synchronous high-throughput producer and consumer benchmark suite (`tests/benchmark.aura`):
+```bash
+aura build tests/benchmark.aura -o bin/kafka-benchmark --release -O3
+```
+To run the benchmark:
+```bash
+./bin/kafka-benchmark
+```
+
+#### 3. Kafka CLI Tools
+Compile the command-line administration and streaming utilities:
+```bash
+# Topic administration utility (kafka-topics)
+aura build tools/topics_cli.aura -o bin/kafka-topics --release
+
+# Console event producer (kafka-console-producer)
+aura build tools/console_producer.aura -o bin/kafka-console-producer --release
+
+# Console event consumer (kafka-console-consumer)
+aura build tools/console_consumer.aura -o bin/kafka-console-consumer --release
+```
+
+#### 4. End-to-End Pub/Sub Demo
+Compile the self-contained streaming pipeline demonstration:
+```bash
+aura build examples/pubsub_demo.aura -o bin/kafka-pubsub-demo --release
+./bin/kafka-pubsub-demo
+```
+
+### Build Flags & Optimizations
+
+| Flag | Description |
+|---|---|
+| `-o <path>` | Specifies the output binary path (e.g., `-o bin/kafka-server`). |
+| `--release` | Enables production optimizations and dead-code elimination. |
+| `-O3` | Enables highest optimization level for maximum runtime throughput. |
+| `--target native` | Compiles directly targeting the host machine architecture (Mach-O / ELF). |
+
+### `aura build` vs `aura run`
+
+- **`aura build <file.aura> -o <binary>`**: Generates a compiled native machine-code binary on disk for standalone deployment and maximum raw performance.
+- **`aura run <file.aura>`**: Instant execution mode used for development, unit testing (`make test`), and rapid prototyping without producing persistent binaries.
 
 ---
 
