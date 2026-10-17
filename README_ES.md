@@ -27,6 +27,7 @@
   - [Pasos Manuales del Flujo](#pasos-manuales-del-flujo)
   - [Automatización con el Script start-local.sh](#automatización-con-el-script-start-localsh)
   - [Tabla de Opciones de start-local.sh](#tabla-de-opciones-de-start-localsh)
+- [🐳 Despliegue con Docker Compose (Ambiente Local)](#-despliegue-con-docker-compose-ambiente-local)
 - [🔨 Compilación de Binarios Nativos Standalone](#-compilación-de-binarios-nativos-standalone)
   - [🌟 Binario Único Unificado (bin/aurakafka) - Recomendado](#-binario-único-unificado-binaurakafka---recomendado)
   - [Requisitos Previos y Directorio de Salida](#requisitos-previos-y-directorio-de-salida)
@@ -207,6 +208,7 @@ El script permite interactuar modularmente con los distintos servicios mediante 
 | Comando | Acción Realizada | Archivo Asociado |
 |---|---|---|
 | `./start-local.sh` | Flujo integral completo de inicialización y prueba | Secuencia completa |
+| `./start-local.sh --docker` | Levanta el stack local completo con Docker Compose | `docker-compose.yml` |
 | `./start-local.sh --server` | Inicia el broker en modo KRaft y ejecuta healthcheck | `tools/server_main.aura` |
 | `./start-local.sh --topics` | Crea, lista y describe tópicos y particiones | `tools/topics_cli.aura` |
 | `./start-local.sh --producer` | Envía mensajes de prueba a un tópico particionado | `tools/console_producer.aura` |
@@ -217,6 +219,50 @@ El script permite interactuar modularmente con los distintos servicios mediante 
 | `./start-local.sh --test` | Ejecuta las 37 pruebas unitarias e integrales | `tests/*_test.aura` |
 | `./start-local.sh --clean` | Limpia binarios generados y archivos temporales | `bin/`, `*.tmp.*` |
 | `./start-local.sh --help` | Muestra la ayuda y lista de comandos | - |
+
+---
+
+## 🐳 Despliegue con Docker Compose (Ambiente Local)
+
+AuraKafka incluye una especificación de orquestación [`docker-compose.yml`](file:///Users/mauriciorojas/Projects/AuraProjects/aura-kafka/docker-compose.yml) lista para producción y desarrollo local que levanta todos los componentes y servicios requeridos:
+
+| Servicio | Contenedor | Puerto(s) | Descripción |
+|---|---|---|---|
+| **AuraKafka Web Portal** | `aurakafka-web` | `9095:9090` | Dashboard en tiempo real, KPIs, monitor de lag, topología interactiva y simulador |
+| **Apache Kafka Broker** | `aurakafka-broker` | `9092:9092` | Broker KRaft oficial (v3.8.0) de alto rendimiento sin ZooKeeper |
+| **Topic Initializer** | `aurakafka-init-topics` | Interno | Inicialización automática de tópicos (`orders-stream`, `user-events`, etc.) |
+| **Provectus Kafka UI** | `aurakafka-ui` | `8080:8080` | Interfaz gráfica web para exploración de clúster, tópicos, mensajes y consumidores |
+| **Schema Registry** | `aurakafka-schema-registry` | `8081:8081` | Registro de esquemas Confluent para formatos Avro/JSON/Protobuf |
+| **Aura CLI & Tools** | `aurakafka-cli` | - | Entorno contenedorizado con el compilador Aura (perfil `--profile tools`) |
+
+### Comandos de Gestión:
+
+```bash
+# Iniciar todos los servicios en segundo plano:
+docker compose up -d
+# o mediante el script automatizado:
+./start-local.sh --docker
+# o usando Make:
+make docker-up
+
+# Ver el estado y salud de los contenedores:
+docker compose ps
+# o: make docker-ps
+
+# Inspeccionar logs en tiempo real:
+docker compose logs -f
+# o: make docker-logs
+
+# Detener todos los servicios:
+docker compose down
+# o: make docker-down
+```
+
+### URLs de Acceso Local:
+- **AuraKafka Observability Portal & KPIs:** `http://localhost:9095`
+- **Provectus Kafka UI:** `http://localhost:8080`
+- **Confluent Schema Registry:** `http://localhost:8081`
+- **Kafka Broker (Bootstrap Server):** `localhost:9092`
 
 ---
 
