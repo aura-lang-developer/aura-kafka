@@ -107,6 +107,24 @@ dev-web:
 
 portal: web
 
+docker-up:
+	@echo "🐳 Starting AuraKafka stack with Docker Compose..."
+	@docker compose up -d
+
+docker-down:
+	@echo "🛑 Stopping AuraKafka Docker Compose stack..."
+	@docker compose down
+
+docker-logs:
+	@docker compose logs -f
+
+docker-ps:
+	@docker compose ps
+
+docker-build:
+	@echo "🔨 Building AuraKafka Docker images..."
+	@docker compose build
+
 fmt:
 	@$(AURA) fmt -w .
 

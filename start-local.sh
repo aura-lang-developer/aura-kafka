@@ -120,12 +120,31 @@ run_all() {
   echo -e "Para ejecutar las pruebas:                 ${CYAN}./start-local.sh --test${RESET}"
 }
 
+run_docker() {
+  echo -e "\n${BLUE}${BOLD}🐳 Iniciando Stack Completo de Servicios con Docker Compose...${RESET}"
+  if ! command -v docker &> /dev/null; then
+    echo -e "${RED}✕ Error: Docker no encontrado en el PATH.${RESET}"
+    exit 1
+  fi
+  docker compose up -d
+  echo -e "\n${GREEN}${BOLD}======================================================${RESET}"
+  echo -e "${GREEN}${BOLD}  ✨ STACK DOCKER LOCAL LEVANTADO CON ÉXITO${RESET}"
+  echo -e "${GREEN}${BOLD}======================================================${RESET}"
+  echo -e "• AuraKafka Web Portal & KPIs: ${CYAN}${BOLD}http://localhost:${AURAKAFKA_WEB_PORT:-9095}${RESET}"
+  echo -e "• Provectus Kafka UI:         ${CYAN}${BOLD}http://localhost:${KAFKA_UI_PORT:-8080}${RESET}"
+  echo -e "• Confluent Schema Registry:  ${CYAN}${BOLD}http://localhost:${SCHEMA_REGISTRY_PORT:-8081}${RESET}"
+  echo -e "• Kafka Broker (KRaft):       ${CYAN}${BOLD}localhost:${KAFKA_BROKER_PORT:-9092}${RESET}"
+  echo -e "\nPara ver logs:  ${CYAN}docker compose logs -f${RESET}"
+  echo -e "Para detener:   ${CYAN}docker compose down${RESET}"
+}
+
 print_help() {
   print_header
   echo "Uso: ./start-local.sh [OPCIÓN]"
   echo ""
   echo "Opciones:"
   echo "  (sin args), all, start   Ejecuta el flujo completo de inicialización local"
+  echo "  --docker, docker         Levanta todo el stack con Docker Compose (Kafka, Web, UI, Schema Registry)"
   echo "  --web, web, portal       Inicia el portal web embebido y dashboard de KPIs (http://localhost:9090)"
   echo "  --server, server         Inicia el broker Kafka en modo KRaft (tools/server_main.aura)"
   echo "  --topics, topics         Aprovisiona y lista tópicos (tools/topics_cli.aura)"
@@ -144,6 +163,9 @@ print_help() {
 case "${1:-all}" in
   all|start)
     run_all
+    ;;
+  --docker|docker)
+    run_docker
     ;;
   --web|web|portal|--portal)
     run_web

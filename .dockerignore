@@ -1,0 +1,14 @@
+.git
+.github
+node_modules
+web/node_modules
+web/dist
+bin
+data
+*.tmp.mjs
+*.tmp.js
+*.__aura_tmp*
+*.o
+.DS_Store
+.vscode
+.idea
